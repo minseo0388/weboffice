@@ -1,0 +1,196 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Navigation Bar */
+.navBar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: #2d2d2d;
+  border-bottom: 1px solid #444;
+  flex-shrink: 0;
+}
+
+.navBtn {
+  padding: 0.5rem 1rem;
+  background: #404040;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.navBtn:hover:not(:disabled) {
+  background: #505050;
+  border-color: #666;
+}
+
+.navBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.slideCounter {
+  color: #aaa;
+  font-size: 13px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+/* Slide Canvas */
+.slideCanvas {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: #1e1e1e;
+}
+
+.slide {
+  position: relative;
+  width: 960px;
+  height: 720px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+/* Shape Container */
+.shapeContainer {
+  border: 1px solid transparent;
+  transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: text;
+}
+
+.shapeContainer:hover {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.05);
+}
+
+/* Shape Text */
+.shapeText {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  color: #000;
+  line-height: 1.4;
+  user-select: none;
+}
+
+/* Shape Textarea */
+.shapeTextarea {
+  width: 100%;
+  height: 100%;
+  border: 2px solid #2563eb;
+  outline: none;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: inherit;
+  resize: none;
+  background: #f9f9f9;
+  color: #000;
+}
+
+/* Thumbnail Panel */
+.thumbnailPanel {
+  width: 150px;
+  background: #2d2d2d;
+  border-left: 1px solid #444;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.thumbnailLabel {
+  padding: 0.75rem 1rem;
+  color: #aaa;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #444;
+  flex-shrink: 0;
+}
+
+.thumbnails {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.thumbnail {
+  padding: 0.5rem;
+  background: #404040;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  aspect-ratio: 4 / 3;
+  position: relative;
+}
+
+.thumbnail:hover {
+  background: #505050;
+  border-color: #666;
+}
+
+.thumbnail.activeThumbnail {
+  background: #2563eb;
+  border-color: #1d4ed8;
+}
+
+.thumbnailContent {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 11px;
+}
+
+.thumbnail.activeThumbnail .thumbnailContent {
+  color: #fff;
+}
+
+.slideNum {
+  font-weight: 600;
+}
+
+/* Scrollbar styling */
+.thumbnails::-webkit-scrollbar {
+  width: 6px;
+}
+
+.thumbnails::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+.thumbnails::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+.thumbnails::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}

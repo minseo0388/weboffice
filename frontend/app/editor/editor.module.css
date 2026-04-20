@@ -49,6 +49,23 @@
   flex: 1;
 }
 
+.mainArea {
+  flex: 1;
+  overflow: auto;
+}
+
+.mainDefault {
+  padding: 0.9rem 1.15rem 1.15rem;
+}
+
+.mainExcel {
+  padding: 0.45rem 0.8rem 0.8rem;
+}
+
+.mainPpt {
+  padding: 0;
+}
+
 .saveStatus {
   font-size: 13px;
   font-weight: 600;

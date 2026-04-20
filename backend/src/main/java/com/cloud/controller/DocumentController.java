@@ -2,9 +2,9 @@ package com.cloud.controller;
 
 import com.cloud.model.UserPrincipal;
 import com.cloud.service.DocumentSaveService;
-import com.cloud.service.ExcelService;
+import com.cloud.service.DocumentServiceFactory;
 import com.cloud.service.FontMappingService;
-import com.cloud.service.WordService;
+import com.cloud.service.StorageService;
 import kr.dogfoot.hwplib.object.HWPFile;
 import kr.dogfoot.hwplib.object.bodytext.Section;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.Paragraph;
@@ -53,12 +53,21 @@ import java.util.zip.ZipInputStream;
 public class DocumentController {
 
     private final FontMappingService fontMappingService;
+    private final DocumentServiceFactory documentServiceFactory;
+    private final StorageService storageService;
+    private final DocumentSaveService documentSaveService;
 
     @Autowired
-    private DocumentSaveService documentSaveService;
-
-    public DocumentController(FontMappingService fontMappingService) {
+    public DocumentController(
+            FontMappingService fontMappingService,
+            DocumentServiceFactory documentServiceFactory,
+            StorageService storageService,
+            DocumentSaveService documentSaveService
+    ) {
         this.fontMappingService = fontMappingService;
+        this.documentServiceFactory = documentServiceFactory;
+        this.storageService = storageService;
+        this.documentSaveService = documentSaveService;
     }
 
     /**
@@ -79,14 +88,11 @@ public class DocumentController {
                 return parseHwp(file);
             } else if (lower.endsWith(".hwpx")) {
                 return parseHwpx(file);
-            } else if (lower.endsWith(".docx")) {
-                return parseDocx(file);
-            } else if (lower.endsWith(".xlsx")) {
-                return parseXlsx(file);
             } else {
-                return ResponseEntity.badRequest().body(
-                        Map.of("error", "지원하지 않는 형식입니다. HWP, HWPX, DOCX, XLSX를 지원합니다.")
-                );
+                Map<String, Object> model = documentServiceFactory.parseDocument(file);
+                model.put("fontMap", fontMappingService.getFullMap());
+                model.put("fileType", String.valueOf(model.getOrDefault("fileType", model.getOrDefault("format", "unknown"))));
+                return ResponseEntity.ok(model);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -135,21 +141,41 @@ public class DocumentController {
                 return ResponseEntity.badRequest().body(Map.of("error", "fileName is required"));
             }
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> sections = (Map<String, Object>) body.get("sections");
-            if (sections == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "sections is required"));
+                @SuppressWarnings("unchecked")
+                Map<String, Object> documentModel = (Map<String, Object>) body.get("documentModel");
+                if (documentModel == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "documentModel is required"));
             }
 
-            DocumentSaveService.DocumentSaveRequest saveRequest =
-                    new DocumentSaveService.DocumentSaveRequest(fileName, sections);
+                    String format = documentServiceFactory.resolveFormat(fileName);
 
-            DocumentSaveService.DocumentSaveResponse response = documentSaveService.saveDocument(user, saveRequest);
+                    if ("hwp".equals(format) || "hwpx".equals(format)) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> sections = (List<Map<String, Object>>) documentModel.get("sections");
+                    if (sections == null) {
+                        return ResponseEntity.badRequest().body(Map.of("error", "documentModel.sections is required for HWP/HWPX"));
+                    }
+
+                    DocumentSaveService.DocumentSaveRequest saveRequest =
+                        new DocumentSaveService.DocumentSaveRequest(fileName, sections);
+                    DocumentSaveService.DocumentSaveResponse legacyResponse = documentSaveService.saveDocument(user, saveRequest);
+
+                    return ResponseEntity.ok(Map.of(
+                        "success", legacyResponse.success(),
+                        "fileName", legacyResponse.fileName(),
+                        "fileType", format,
+                        "message", legacyResponse.message(),
+                        "savedBytes", legacyResponse.savedBytes()
+                    ));
+                    }
+
+                StorageService.SaveResult response = storageService.saveEditorContent(user, fileName, documentModel);
 
             return ResponseEntity.ok(Map.of(
-                    "success", response.success(),
+                        "success", true,
                     "fileName", response.fileName(),
-                    "message", response.message(),
+                    "fileType", response.fileType(),
+                    "message", "Document saved successfully.",
                     "savedBytes", response.savedBytes()
             ));
 
@@ -190,6 +216,8 @@ public class DocumentController {
 
             Map<String, Object> model = new LinkedHashMap<>();
             model.put("title", file.getOriginalFilename());
+            model.put("format", "hwp");
+            model.put("fileType", "hwp");
             model.put("sectionCount", sections.size());
             model.put("sections", sections);
             model.put("fontMap", fontMappingService.getFullMap());
@@ -249,6 +277,7 @@ public class DocumentController {
             Map<String, Object> model = new LinkedHashMap<>();
             model.put("title", file.getOriginalFilename());
             model.put("format", "hwpx");
+            model.put("fileType", "hwpx");
 
             List<Map<String, Object>> sections = new ArrayList<>();
             List<Map<String, Object>> paragraphs = new ArrayList<>();
@@ -324,23 +353,4 @@ public class DocumentController {
         return ResponseEntity.ok(fontMappingService.getFullMap());
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // DOCX parsing (Word documents via Apache POI)
-    // ─────────────────────────────────────────────────────────────────
-    private ResponseEntity<Map<String, Object>> parseDocx(MultipartFile file) throws Exception {
-        WordService wordService = new WordService();
-        Map<String, Object> model = wordService.parseDocx(file);
-        model.put("fontMap", fontMappingService.getFullMap());
-        return ResponseEntity.ok(model);
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // XLSX parsing (Excel spreadsheets via Apache POI)
-    // ─────────────────────────────────────────────────────────────────
-    private ResponseEntity<Map<String, Object>> parseXlsx(MultipartFile file) throws Exception {
-        ExcelService excelService = new ExcelService();
-        Map<String, Object> model = excelService.parseXlsx(file);
-        model.put("fontMap", fontMappingService.getFullMap());
-        return ResponseEntity.ok(model);
-    }
 }

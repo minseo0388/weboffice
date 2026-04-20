@@ -1,32 +1,16 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import styles from './DocumentCanvas.module.css';
-
-interface Paragraph {
-  text: string;
-  fontName?: string;
-  fontSize?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  align?: 'left' | 'center' | 'right' | 'justify';
-}
-
-interface Section {
-  paragraphs: Paragraph[];
-}
-
-interface DocumentModel {
-  title: string;
-  format: string;
-  sections: Section[];
-  fontMap?: Record<string, string>;
-}
+import { Paragraph, TextDocumentModel, TextToolAction } from '../types/document';
 
 interface DocumentCanvasProps {
-  document: DocumentModel;
-  onContentChange: (updatedModel: DocumentModel) => void;
+  document: TextDocumentModel;
+  onContentChange: (updatedModel: TextDocumentModel) => void;
+}
+
+export interface DocumentCanvasHandle {
+  applyAction: (action: TextToolAction) => void;
 }
 
 interface EditState {
@@ -39,9 +23,11 @@ interface EditState {
  * DocumentCanvas: Renders and allows editing of the document JSON model.
  * Supports live text editing with formatting toolbar.
  */
-export default function DocumentCanvas({ document, onContentChange }: DocumentCanvasProps) {
+const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(function DocumentCanvas(
+  { document, onContentChange }: DocumentCanvasProps,
+  ref
+) {
   const [editState, setEditState] = useState<EditState | null>(null);
-  const [selectedFormat, setSelectedFormat] = useState<'bold' | 'italic' | 'underline' | null>(null);
   const [fontSize, setFontSize] = useState(14);
   const [fontName, setFontName] = useState('NanumGothic');
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +50,6 @@ export default function DocumentCanvas({ document, onContentChange }: DocumentCa
       // Populate formatting toolbar
       setFontSize(para.fontSize || 14);
       setFontName(para.fontName || 'NanumGothic');
-      setSelectedFormat(null);
 
       // Focus input after render
       setTimeout(() => textInputRef.current?.focus(), 0);
@@ -99,7 +84,7 @@ export default function DocumentCanvas({ document, onContentChange }: DocumentCa
         : section
     );
 
-    const updatedModel: DocumentModel = {
+    const updatedModel: TextDocumentModel = {
       ...document,
       sections: updatedSections,
     };
@@ -119,97 +104,87 @@ export default function DocumentCanvas({ document, onContentChange }: DocumentCa
     }
   };
 
-  /**
-   * Toggle formatting (bold, italic, underline)
-   */
-  const toggleFormatting = (format: 'bold' | 'italic' | 'underline') => {
+  const updateSelectedParagraph = useCallback((updater: (para: Paragraph) => Paragraph) => {
     if (!editState) return;
-
     const updatedSections = sections.map((section, sIdx) =>
       sIdx === editState.sectionIdx
         ? {
             ...section,
             paragraphs: section.paragraphs.map((para, pIdx) =>
               pIdx === editState.paraIdx
-                ? {
-                    ...para,
-                    [format]: !(para[format as keyof Paragraph] as boolean),
-                  }
+                ? updater(para)
                 : para
             ),
           }
         : section
     );
 
-    const updatedModel: DocumentModel = {
+    const updatedModel: TextDocumentModel = {
       ...document,
       sections: updatedSections,
     };
 
     onContentChange(updatedModel);
-  };
+  }, [document, editState, onContentChange, sections]);
+
+  useImperativeHandle(ref, () => ({
+    applyAction: (action: TextToolAction) => {
+      if (action.type === 'fontName') {
+        setFontName(action.value);
+      }
+
+      if (action.type === 'fontSize') {
+        setFontSize(action.value);
+      }
+
+      if (!editState) {
+        return;
+      }
+
+      if (action.type === 'bold' || action.type === 'italic' || action.type === 'underline') {
+        const key = action.type;
+        updateSelectedParagraph((para) => ({
+          ...para,
+          [key]: !(para[key as keyof Paragraph] as boolean),
+        }));
+        return;
+      }
+
+      if (action.type === 'align') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          align: action.value,
+        }));
+        return;
+      }
+
+      if (action.type === 'textColor') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          textColor: action.value,
+        }));
+        return;
+      }
+
+      if (action.type === 'fontName') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          fontName: action.value,
+        }));
+        return;
+      }
+
+      if (action.type === 'fontSize') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          fontSize: action.value,
+        }));
+      }
+    },
+  }), [editState, updateSelectedParagraph]);
 
   return (
     <div className={styles.container}>
-      {/* ─ Toolbar ─ */}
-      <div className={styles.toolbar}>
-        <div className={styles.toolGroup}>
-          <select
-            value={fontName}
-            onChange={(e) => setFontName(e.target.value)}
-            className={styles.fontSelect}
-          >
-            <option value="NanumGothic">NanumGothic</option>
-            <option value="HamchoromBatang">HamchoromBatang</option>
-            <option value="Calibri">Calibri</option>
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times New Roman</option>
-          </select>
-
-          <select
-            value={fontSize}
-            onChange={(e) => setFontSize(Number(e.target.value))}
-            className={styles.sizeSelect}
-          >
-            {[8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={styles.toolGroup}>
-          <button
-            className={`${styles.toolBtn} ${selectedFormat === 'bold' ? styles.active : ''}`}
-            onClick={() => toggleFormatting('bold')}
-            title="Bold (Ctrl+B)"
-          >
-            <strong>B</strong>
-          </button>
-          <button
-            className={`${styles.toolBtn} ${selectedFormat === 'italic' ? styles.active : ''}`}
-            onClick={() => toggleFormatting('italic')}
-            title="Italic (Ctrl+I)"
-          >
-            <em>I</em>
-          </button>
-          <button
-            className={`${styles.toolBtn} ${selectedFormat === 'underline' ? styles.active : ''}`}
-            onClick={() => toggleFormatting('underline')}
-            title="Underline (Ctrl+U)"
-          >
-            <u>U</u>
-          </button>
-        </div>
-
-        <div className={styles.toolGroup}>
-          <button className={styles.actionBtn} onClick={handleSaveText} disabled={!editState}>
-            💾 Save Changes
-          </button>
-        </div>
-      </div>
-
       {/* ─ Document Title ─ */}
       <div className={styles.titleSection}>
         <h1 className={styles.title}>{documentTitle}</h1>
@@ -235,8 +210,9 @@ export default function DocumentCanvas({ document, onContentChange }: DocumentCa
                     className={`${styles.paragraph} ${isEditing ? styles.editing : ''}`}
                     style={{
                       textAlign: para.align || 'left',
-                      fontFamily: para.fontName || 'NanumGothic',
-                      fontSize: `${para.fontSize || 14}pt`,
+                      fontFamily: para.fontName || fontName || 'NanumGothic',
+                      fontSize: `${para.fontSize || fontSize || 14}pt`,
+                      color: para.textColor || '#111827',
                       fontWeight: para.bold ? 'bold' : 'normal',
                       fontStyle: para.italic ? 'italic' : 'normal',
                       textDecoration: para.underline ? 'underline' : 'none',
@@ -252,8 +228,9 @@ export default function DocumentCanvas({ document, onContentChange }: DocumentCa
                         onKeyDown={handleKeyDown}
                         className={styles.input}
                         style={{
-                          fontFamily: para.fontName || 'NanumGothic',
-                          fontSize: `${para.fontSize || 14}pt`,
+                          fontFamily: para.fontName || fontName || 'NanumGothic',
+                          fontSize: `${para.fontSize || fontSize || 14}pt`,
+                          color: para.textColor || '#111827',
                         }}
                       />
                     ) : (
@@ -270,4 +247,6 @@ export default function DocumentCanvas({ document, onContentChange }: DocumentCa
       </div>
     </div>
   );
-}
+});
+
+export default DocumentCanvas;

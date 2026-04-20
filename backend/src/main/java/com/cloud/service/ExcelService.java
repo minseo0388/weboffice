@@ -1,11 +1,11 @@
 package com.cloud.service;
 
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.*;
 
 /**
@@ -44,102 +44,110 @@ public class ExcelService {
      * }
      */
     public Map<String, Object> parseXlsx(MultipartFile file) throws Exception {
-        File temp = File.createTempFile("hc_xlsx_", ".xlsx");
-        try {
-            file.transferTo(temp);
+        return parseWorkbook(file, "xlsx");
+    }
 
-            XSSFWorkbook workbook = new XSSFWorkbook(new java.io.FileInputStream(temp));
+    public Map<String, Object> parseXls(MultipartFile file) throws Exception {
+        return parseWorkbook(file, "xls");
+    }
+
+    private Map<String, Object> parseWorkbook(MultipartFile file, String format) throws Exception {
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             List<Map<String, Object>> sheets = new ArrayList<>();
+            DataFormatter formatter = new DataFormatter();
 
-            for (Sheet sheet : workbook) {
-                Map<String, Object> sheetMap = extractSheet(sheet);
-                sheets.add(sheetMap);
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                sheets.add(extractSheet(sheet, i, formatter));
             }
-
-            workbook.close();
 
             Map<String, Object> model = new LinkedHashMap<>();
             model.put("title", file.getOriginalFilename());
-            model.put("format", "xlsx");
+            model.put("format", format);
+            model.put("fileType", format);
             model.put("sheetCount", workbook.getNumberOfSheets());
             model.put("sheets", sheets);
-            model.put("note", "XLSX files are parsed into grid format. Full spreadsheet UI support in Phase 3.");
-
             return model;
-
-        } finally {
-            temp.delete();
         }
     }
 
     /**
      * Extracts a single Excel sheet into rows and cells.
      */
-    private Map<String, Object> extractSheet(Sheet sheet) {
-        List<Map<String, Object>> rows = new ArrayList<>();
+    private Map<String, Object> extractSheet(Sheet sheet, int sheetIndex, DataFormatter formatter) {
+        int maxRow = Math.max(sheet.getLastRowNum(), 0);
+        int maxCol = getMaxColumnCount(sheet);
 
-        for (Row row : sheet) {
-            List<Map<String, Object>> cells = new ArrayList<>();
-
-            for (Cell cell : row) {
-                Map<String, Object> cellMap = extractCell(cell);
-                cells.add(cellMap);
+        List<List<Map<String, Object>>> grid = new ArrayList<>();
+        for (int rowIndex = 0; rowIndex <= maxRow; rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            List<Map<String, Object>> rowData = new ArrayList<>();
+            for (int colIndex = 0; colIndex < maxCol; colIndex++) {
+                Cell cell = row == null ? null : row.getCell(colIndex, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                rowData.add(extractCell(cell, rowIndex, colIndex, formatter));
             }
-
-            if (!cells.isEmpty()) {
-                rows.add(Map.of("cells", cells));
-            }
+            grid.add(rowData);
         }
 
-        return Map.of(
-                "name", sheet.getSheetName(),
-                "rows", rows
-        );
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sheetIndex", sheetIndex);
+        result.put("name", sheet.getSheetName());
+        result.put("rowCount", grid.size());
+        result.put("columnCount", maxCol);
+        result.put("grid", grid);
+        return result;
+    }
+
+    private int getMaxColumnCount(Sheet sheet) {
+        int maxCol = 0;
+        for (Row row : sheet) {
+            maxCol = Math.max(maxCol, row.getLastCellNum());
+        }
+        return Math.max(maxCol, 1);
     }
 
     /**
      * Extracts a single Excel cell with value and formatting.
      */
-    private Map<String, Object> extractCell(Cell cell) {
-        Object value = null;
-        String type = "empty";
+    private Map<String, Object> extractCell(Cell cell, int row, int col, DataFormatter formatter) {
+        Map<String, Object> cellData = new LinkedHashMap<>();
+        cellData.put("row", row);
+        cellData.put("col", col);
 
-        switch (cell.getCellType()) {
-            case STRING:
-                value = cell.getStringCellValue();
-                type = "string";
-                break;
-            case NUMERIC:
-                value = cell.getNumericCellValue();
-                type = "number";
-                break;
-            case BOOLEAN:
-                value = cell.getBooleanCellValue();
-                type = "boolean";
-                break;
-            case FORMULA:
-                value = cell.getCellFormula();
-                type = "formula";
-                break;
-            default:
-                value = "";
-                type = "empty";
+        if (cell == null) {
+            cellData.put("type", "empty");
+            cellData.put("value", "");
+            return cellData;
         }
 
-        CellStyle style = cell.getCellStyle();
-        Font font = style != null ? cell.getSheet().getWorkbook().getFontAt(style.getFontIndex()) : null;
+        String type;
+        Object value;
+        switch (cell.getCellType()) {
+            case STRING -> {
+                type = "string";
+                value = cell.getStringCellValue();
+            }
+            case NUMERIC -> {
+                type = "number";
+                value = cell.getNumericCellValue();
+            }
+            case BOOLEAN -> {
+                type = "boolean";
+                value = cell.getBooleanCellValue();
+            }
+            case FORMULA -> {
+                type = "formula";
+                value = cell.getCellFormula();
+            }
+            default -> {
+                type = "empty";
+                value = formatter.formatCellValue(cell);
+            }
+        }
 
-        boolean bold = font != null && font.getBold();
-        Integer fontSize = font != null ? (int) font.getFontHeightInPoints() : 11;
-        String fontName = font != null ? font.getFontName() : "Calibri";
-
-        return Map.of(
-                "value", value,
-                "type", type,
-                "bold", bold,
-                "fontSize", fontSize,
-                "fontName", fontName
-        );
+        cellData.put("type", type);
+        cellData.put("value", value);
+        return cellData;
     }
 
     /**
@@ -147,70 +155,87 @@ public class ExcelService {
      * 
      * Reconstructs the workbook from the JSON representation.
      */
-    public void saveXlsx(Map<String, Object> model, String outputPath) throws Exception {
-        XSSFWorkbook workbook = new XSSFWorkbook();
+    public byte[] saveWorkbook(Map<String, Object> model, byte[] originalBytes) throws Exception {
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(originalBytes))) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> sheets = (List<Map<String, Object>>) model.get("sheets");
+            if (sheets == null) {
+                return originalBytes;
+            }
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> sheets = (List<Map<String, Object>>) model.get("sheets");
-
-        if (sheets != null) {
             for (Map<String, Object> sheetData : sheets) {
-                String sheetName = (String) sheetData.get("name");
-                Sheet sheet = workbook.createSheet(sheetName != null ? sheetName : "Sheet");
+                int sheetIndex = ((Number) sheetData.getOrDefault("sheetIndex", -1)).intValue();
+                if (sheetIndex < 0 || sheetIndex >= workbook.getNumberOfSheets()) {
+                    continue;
+                }
 
+                Sheet sheet = workbook.getSheetAt(sheetIndex);
                 @SuppressWarnings("unchecked")
-                List<Map<String, Object>> rows = (List<Map<String, Object>>) sheetData.get("rows");
+                List<List<Map<String, Object>>> grid = (List<List<Map<String, Object>>>) sheetData.get("grid");
+                if (grid == null) {
+                    continue;
+                }
 
-                if (rows != null) {
-                    int rowIndex = 0;
-                    for (Map<String, Object> rowData : rows) {
-                        Row row = sheet.createRow(rowIndex++);
+                for (int rowIndex = 0; rowIndex < grid.size(); rowIndex++) {
+                    List<Map<String, Object>> rowData = grid.get(rowIndex);
+                    if (rowData == null) {
+                        continue;
+                    }
 
-                        @SuppressWarnings("unchecked")
-                        List<Map<String, Object>> cells = (List<Map<String, Object>>) rowData.get("cells");
+                    Row row = sheet.getRow(rowIndex);
+                    if (row == null) {
+                        row = sheet.createRow(rowIndex);
+                    }
 
-                        if (cells != null) {
-                            int cellIndex = 0;
-                            for (Map<String, Object> cellData : cells) {
-                                Cell cell = row.createCell(cellIndex++);
-
-                                Object value = cellData.get("value");
-                                String type = (String) cellData.get("type");
-
-                                // Set cell value based on type
-                                if ("number".equals(type) && value instanceof Number) {
-                                    cell.setCellValue(((Number) value).doubleValue());
-                                } else if ("boolean".equals(type) && value instanceof Boolean) {
-                                    cell.setCellValue((Boolean) value);
-                                } else if (value != null) {
-                                    cell.setCellValue(value.toString());
-                                }
-
-                                // Apply formatting if available
-                                CellStyle style = workbook.createCellStyle();
-                                Font font = workbook.createFont();
-
-                                Boolean bold = (Boolean) cellData.get("bold");
-                                if (bold != null) font.setBold(bold);
-
-                                Integer fontSize = (Integer) cellData.get("fontSize");
-                                if (fontSize != null) font.setFontHeightInPoints(fontSize.shortValue());
-
-                                String fontName = (String) cellData.get("fontName");
-                                if (fontName != null) font.setFontName(fontName);
-
-                                style.setFont(font);
-                                cell.setCellStyle(style);
-                            }
+                    for (int colIndex = 0; colIndex < rowData.size(); colIndex++) {
+                        Map<String, Object> cellData = rowData.get(colIndex);
+                        if (cellData == null) {
+                            continue;
                         }
+
+                        Cell cell = row.getCell(colIndex, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+                        setCellValue(cell, cellData);
                     }
                 }
             }
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    private void setCellValue(Cell cell, Map<String, Object> cellData) {
+        String type = (String) cellData.getOrDefault("type", "string");
+        Object value = cellData.get("value");
+
+        if ("number".equals(type)) {
+            if (value instanceof Number number) {
+                cell.setCellValue(number.doubleValue());
+            } else {
+                try {
+                    cell.setCellValue(Double.parseDouble(String.valueOf(value)));
+                } catch (NumberFormatException ex) {
+                    cell.setCellValue(String.valueOf(value == null ? "" : value));
+                }
+            }
+            return;
         }
 
-        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outputPath)) {
-            workbook.write(fos);
+        if ("boolean".equals(type)) {
+            if (value instanceof Boolean bool) {
+                cell.setCellValue(bool);
+            } else {
+                cell.setCellValue(Boolean.parseBoolean(String.valueOf(value)));
+            }
+            return;
         }
-        workbook.close();
+
+        if ("formula".equals(type)) {
+            cell.setCellFormula(String.valueOf(value == null ? "" : value));
+            return;
+        }
+
+        cell.setCellValue(String.valueOf(value == null ? "" : value));
     }
 }

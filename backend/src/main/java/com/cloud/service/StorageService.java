@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +26,12 @@ import java.util.stream.Collectors;
  */
 @Service
 public class StorageService {
+
+    private final DocumentServiceFactory documentServiceFactory;
+
+    public StorageService(DocumentServiceFactory documentServiceFactory) {
+        this.documentServiceFactory = documentServiceFactory;
+    }
 
     @Value("${oracle.cloud.namespace}")
     private String namespace;
@@ -124,13 +131,17 @@ public class StorageService {
      */
     public void uploadFile(UserPrincipal user, String fileName, MultipartFile file) throws Exception {
         String objectName = user.storagePrefixKey() + sanitizeFileName(fileName);
+        String contentType = file.getContentType();
+        if (contentType == null || contentType.isBlank() || "application/octet-stream".equals(contentType)) {
+            contentType = inferContentType(fileName);
+        }
 
         PutObjectRequest request = PutObjectRequest.builder()
                 .namespaceName(namespace)
                 .bucketName(bucket)
                 .objectName(objectName)
                 .contentLength(file.getSize())
-                .contentType(file.getContentType())
+                .contentType(contentType)
                 .putObjectBody(file.getInputStream())
                 .build();
 
@@ -167,11 +178,35 @@ public class StorageService {
         String lower = fileName.toLowerCase();
         if (lower.endsWith(".hwp")) return "application/x-hwp";
         if (lower.endsWith(".hwpx")) return "application/x-hwpx";
+        if (lower.endsWith(".doc")) return "application/msword";
         if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
         if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
         if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
         return "application/octet-stream";
     }
+
+    /**
+     * Saves edited JSON content back to its original binary Office format.
+     * This method handles Microsoft Office formats through DocumentServiceFactory.
+     */
+    public SaveResult saveEditorContent(UserPrincipal user, String fileName, Map<String, Object> documentModel) throws Exception {
+        String format = documentServiceFactory.resolveFormat(fileName);
+        if (!documentServiceFactory.isMicrosoftFormat(format)) {
+            throw new UnsupportedOperationException("saveEditorContent supports only Microsoft formats: " + format);
+        }
+
+        byte[] originalBytes;
+        try (InputStream stream = downloadFile(user, fileName)) {
+            originalBytes = stream.readAllBytes();
+        }
+
+        byte[] updatedBytes = documentServiceFactory.saveDocument(fileName, documentModel, originalBytes);
+        uploadFile(user, fileName, updatedBytes);
+        return new SaveResult(fileName, format, updatedBytes.length);
+    }
+
+    public record SaveResult(String fileName, String fileType, long savedBytes) {}
 
     /**
      * Downloads a file from the user's personal directory.

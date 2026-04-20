@@ -37,7 +37,7 @@ public class DocumentSaveService {
      */
     public record DocumentSaveRequest(
             String fileName,
-            Map<String, Object> sections
+            List<Map<String, Object>> sections
     ) {}
 
     /**
@@ -117,9 +117,7 @@ public class DocumentSaveService {
      * of the hwplib CharShape structures, which is handled in Phase 2.
      */
     @SuppressWarnings("unchecked")
-    private void applyChangesToHwpFile(HWPFile hwpFile, Map<String, Object> sections) throws Exception {
-        List<Map<String, Object>> sectionsList = (List<Map<String, Object>>) sections;
-
+    private void applyChangesToHwpFile(HWPFile hwpFile, List<Map<String, Object>> sectionsList) throws Exception {
         for (int si = 0; si < Math.min(sectionsList.size(), hwpFile.getBodyText().getSectionList().size()); si++) {
             Section section = hwpFile.getBodyText().getSectionList().get(si);
             Map<String, Object> sectionData = sectionsList.get(si);

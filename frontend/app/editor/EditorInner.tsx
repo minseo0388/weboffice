@@ -3,31 +3,22 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import DocumentCanvas from '../components/DocumentCanvas';
+import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
+import SpreadsheetGrid, { SpreadsheetGridHandle } from '../components/SpreadsheetGrid';
+import SlideNavigator, { SlideNavigatorHandle } from '../components/SlideNavigator';
+import RibbonManager from '../components/RibbonManager';
+import {
+  FileType,
+  DocumentModel,
+  SaveStatus,
+  isPresentationDocument,
+  isSpreadsheetDocument,
+  isTextDocument,
+  PresentationSlide,
+  SpreadsheetSheet,
+  SpreadsheetCell,
+} from '../types/document';
 import styles from './editor.module.css';
-
-interface DocumentModel {
-  title: string;
-  format: string;
-  sections: Section[];
-  fontMap?: Record<string, string>;
-}
-
-interface Section {
-  paragraphs: Paragraph[];
-}
-
-interface Paragraph {
-  text: string;
-  fontName?: string;
-  fontSize?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  align?: 'left' | 'center' | 'right' | 'justify';
-}
-
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export default function EditorInner() {
   const { user } = useAuth();
@@ -42,6 +33,9 @@ export default function EditorInner() {
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const textCanvasRef = useRef<DocumentCanvasHandle>(null);
+  const spreadsheetRef = useRef<SpreadsheetGridHandle>(null);
+  const slideRef = useRef<SlideNavigatorHandle>(null);
 
   useEffect(() => {
     if (!fileName || !user?.token) {
@@ -125,6 +119,137 @@ export default function EditorInner() {
     [autoSaveDocument]
   );
 
+  const handleCellChange = useCallback(
+    (sheetIdx: number, rowIdx: number, cellIdx: number, updatedCell: SpreadsheetCell) => {
+      setDocModel((prev) => {
+        if (!prev || !isSpreadsheetDocument(prev)) return prev;
+
+        const updatedSheets = prev.sheets.map((sheet, sIdx) => {
+          if (sIdx !== sheetIdx) return sheet;
+
+          const updatedGrid = sheet.grid.map((row, rIdx) => {
+            if (rIdx !== rowIdx) return row;
+            return row.map((cell, cIdx) => (cIdx === cellIdx ? updatedCell : cell));
+          });
+
+          return {
+            ...sheet,
+            grid: updatedGrid,
+          };
+        });
+
+        const updatedModel: DocumentModel = {
+          ...prev,
+          sheets: updatedSheets,
+        };
+
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          autoSaveDocument(updatedModel);
+        }, 2500);
+
+        return updatedModel;
+      });
+    },
+    [autoSaveDocument]
+  );
+
+  const handleSheetReplace = useCallback(
+    (sheetIdx: number, sheet: SpreadsheetSheet) => {
+      setDocModel((prev) => {
+        if (!prev || !isSpreadsheetDocument(prev)) return prev;
+
+        const updatedSheets = prev.sheets.map((item, idx) => (idx === sheetIdx ? sheet : item));
+        const updatedModel: DocumentModel = {
+          ...prev,
+          sheets: updatedSheets,
+        };
+
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          autoSaveDocument(updatedModel);
+        }, 2500);
+
+        return updatedModel;
+      });
+    },
+    [autoSaveDocument]
+  );
+
+  const handleSlideTextChange = useCallback(
+    (slideIdx: number, shapeIdx: number, newText: string) => {
+      setDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+
+        const updatedSlides = prev.slides.map((slide, sIdx) => {
+          if (sIdx !== slideIdx) return slide;
+          return {
+            ...slide,
+            shapes: slide.shapes.map((shape, shapeIndex) =>
+              shapeIndex === shapeIdx ? { ...shape, text: newText } : shape
+            ),
+          };
+        });
+
+        const updatedModel: DocumentModel = {
+          ...prev,
+          slides: updatedSlides,
+        };
+
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          autoSaveDocument(updatedModel);
+        }, 2500);
+
+        return updatedModel;
+      });
+    },
+    [autoSaveDocument]
+  );
+
+  const handleSlideShapeFormatChange = useCallback(
+    (slideIdx: number, shapeIdx: number, shapeUpdate: PresentationSlide['shapes'][number]) => {
+      setDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+
+        const updatedSlides = prev.slides.map((slide, sIdx) => {
+          if (sIdx !== slideIdx) return slide;
+          return {
+            ...slide,
+            shapes: slide.shapes.map((shape, currentShapeIdx) =>
+              currentShapeIdx === shapeIdx ? shapeUpdate : shape
+            ),
+          };
+        });
+
+        const updatedModel: DocumentModel = {
+          ...prev,
+          slides: updatedSlides,
+        };
+
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          autoSaveDocument(updatedModel);
+        }, 2500);
+
+        return updatedModel;
+      });
+    },
+    [autoSaveDocument]
+  );
+
+  const handleTextRibbonAction = useCallback((action: Parameters<DocumentCanvasHandle['applyAction']>[0]) => {
+    textCanvasRef.current?.applyAction(action);
+  }, []);
+
+  const handleSpreadsheetRibbonAction = useCallback((action: Parameters<SpreadsheetGridHandle['applyAction']>[0]) => {
+    spreadsheetRef.current?.applyAction(action);
+  }, []);
+
+  const handlePresentationRibbonAction = useCallback((action: Parameters<SlideNavigatorHandle['applyAction']>[0]) => {
+    slideRef.current?.applyAction(action);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -167,6 +292,13 @@ export default function EditorInner() {
     );
   }
 
+  const currentFileType = String(docModel.fileType || docModel.format || 'unknown').toLowerCase() as FileType;
+  const mainLayoutClass = isSpreadsheetDocument(docModel)
+    ? styles.mainExcel
+    : isPresentationDocument(docModel)
+      ? styles.mainPpt
+      : styles.mainDefault;
+
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
@@ -174,18 +306,43 @@ export default function EditorInner() {
           ← Back
         </button>
         <span className={styles.fileName}>{fileName}</span>
-        <div className={styles.spacer}></div>
-        <div className={`${styles.saveStatus} ${styles[saveStatus]}`}>
-          {saveStatus === 'idle' && 'Ready'}
-          {saveStatus === 'saving' && 'Saving...'}
-          {saveStatus === 'saved' && '✓ Saved'}
-          {saveStatus === 'error' && '✗ Error'}
-        </div>
-        {lastSavedTime && <span className={styles.lastSaved}>Last: {lastSavedTime}</span>}
       </header>
 
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        <DocumentCanvas document={docModel} onContentChange={handleContentChange} />
+      <RibbonManager
+        fileType={currentFileType}
+        saveStatus={saveStatus}
+        lastSavedTime={lastSavedTime}
+        onTextAction={handleTextRibbonAction}
+        onSpreadsheetAction={handleSpreadsheetRibbonAction}
+        onPresentationAction={handlePresentationRibbonAction}
+      />
+
+      <main className={`${styles.mainArea} ${mainLayoutClass}`}>
+        {isSpreadsheetDocument(docModel) ? (
+          <SpreadsheetGrid
+            ref={spreadsheetRef}
+            sheets={docModel.sheets}
+            onCellChange={handleCellChange}
+            onSheetReplace={handleSheetReplace}
+          />
+        ) : isPresentationDocument(docModel) ? (
+          <SlideNavigator
+            ref={slideRef}
+            slides={docModel.slides}
+            onTextChange={handleSlideTextChange}
+            onShapeFormatChange={handleSlideShapeFormatChange}
+          />
+        ) : isTextDocument(docModel) ? (
+          <DocumentCanvas
+            ref={textCanvasRef}
+            document={docModel}
+            onContentChange={handleContentChange}
+          />
+        ) : (
+          <div className={styles.emptyState}>
+            <p>Unsupported document model.</p>
+          </div>
+        )}
       </main>
     </div>
   );

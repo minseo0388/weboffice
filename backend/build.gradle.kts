@@ -33,6 +33,7 @@ dependencies {
     // Apache POI — MS Office format parsing and writing
     implementation("org.apache.poi:poi-ooxml:5.2.4")       // DOCX, XLSX, PPTX
     implementation("org.apache.poi:poi:5.2.4")              // XLS (legacy)
+    implementation("org.apache.poi:poi-scratchpad:5.2.4")   // DOC (legacy HWPF)
     implementation("org.apache.xmlbeans:xmlbeans:5.1.1")   // POI dependency
 
     // Apache Commons for utility functions
