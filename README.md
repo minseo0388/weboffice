@@ -1,78 +1,135 @@
 # WebOffice
 
-> A premium personal cloud HWP/HWPX document editor powered by Oracle Cloud Infrastructure.
+WebOffice is a personal cloud document workspace with multi-format editing support, OAuth2 login, and user-isolated object storage.
 
-WebOffice is an open-source web-based HWP/HWPX editor designed for individuals who need to manage their Korean documents in a secure, personal cloud environment. It features dual OAuth2 authentication (Google and Discord) and utilizes OCI Object Storage for reliable file persistence.
+It is built with:
+- Backend: Spring Boot 3 (Java 17), Apache POI, OCI Object Storage SDK
+- Frontend: Next.js 16, React 19, TypeScript
 
-## Table of Contents
+## Features
 
-- [Install](#install)
-- [Usage](#usage)
-- [Maintainers](#maintainers)
-- [Contributing](#contributing)
-- [License](#license)
+- Dual OAuth2 login: Google and Discord
+- JWT authentication flow for API access
+- User-scoped file isolation in object storage
+- Multi-format parsing and editing model
+  - HWP / HWPX
+  - DOCX / DOC
+  - XLSX / XLS
+  - PPTX
+- Format-aware editor UI
+  - Text document canvas
+  - Spreadsheet grid editor
+  - Presentation slide navigator
+- Dynamic ribbon UI by file type
+- Debounced auto-save for editor updates
 
-## Install
+## Repository Structure
 
-### Prerequisites
+```text
+backend/   Spring Boot API (auth, storage, document parsing/save)
+frontend/  Next.js app (dashboard, editor, ribbon UI)
+```
 
-- Java 17 or higher
-- Node.js 20 or higher
-- Oracle Cloud Infrastructure (OCI) Account
-- Discord/Google Developer Console Access (for OAuth2)
+## Prerequisites
 
-### Clone
+- Java 17+
+- Node.js 20+
+- npm 10+
+- OCI account and bucket (for storage features)
+- OAuth app credentials (Google and/or Discord)
+
+## Quick Start
+
+### 1) Clone
 
 ```bash
 git clone https://github.com/minseo0388/weboffice.git
 cd weboffice
 ```
 
-### Backend Setup
+### 2) Backend setup
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Configure `src/main/resources/application.yml` with your OCI and OAuth2 credentials. Or set environment variables:
-   - `ORACLE_NS`, `GOOGLE_CLIENT_ID`, `DISCORD_CLIENT_ID`, `JWT_SECRET_KEY`, etc.
-3. Build and run:
-   ```bash
-   ./gradlew bootRun
-   ```
+Configure backend settings in `backend/src/main/resources/application.yml`.
 
-### Frontend Setup
+Typical values:
+- OAuth client IDs/secrets
+- JWT secret
+- OCI namespace/bucket/credentials
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
+Run backend:
 
-## Usage
+```bash
+cd backend
+./gradlew bootRun
+```
 
-1. Open your browser and navigate to `http://localhost:3000`.
-2. Sign in using Google or Discord.
-3. Upload HWP/HWPX files to your personal dashboard.
-4. Click on a file to open the premium WYSIWYG editor.
-5. Edit text, insert tables, upload images, and save changes back to your OCI bucket.
+On Windows PowerShell:
 
-## Maintainers
+```powershell
+cd backend
+.\gradlew.bat bootRun
+```
+
+Backend default URL: `http://localhost:8080`
+
+### 3) Frontend setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend default URL: `http://localhost:3000`
+
+Note: if port `3000` is already in use, Next.js may automatically switch to `3001`.
+
+## Local Development Notes
+
+- The frontend has an API rewrite for `/api/*` to backend `http://localhost:8080/api/*`.
+- OAuth buttons on the landing page use `NEXT_PUBLIC_BACKEND_URL` if provided.
+  - If not set, default backend URL is `http://localhost:8080`.
+- To verify backend health quickly:
+
+```bash
+curl http://localhost:8080/api/documents/fontmap
+```
+
+## Build
+
+Backend:
+
+```bash
+cd backend
+./gradlew clean build -x test
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Current Status
+
+- Core upload/list/download/delete flows are implemented.
+- Multi-format parse/save pipeline is integrated.
+- Editor surface supports format-specific rendering and ribbon controls.
+- Some advanced collaborative/runtime features are still in progress.
+
+## Maintainer
 
 [@minseo0388](https://github.com/minseo0388)
 
 ## Contributing
 
-PRs accepted. Feel free to dive in! [Open an issue](https://github.com/minseo0388/weboffice/issues/new) or submit PRs.
+Issues and PRs are welcome.
 
-Standard Readme follows the [Contributor Covenant](https://www.contributorcovenant.org/version/2/0/code_of_conduct/) Code of Conduct.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Open a pull request
 
 ## License
 
