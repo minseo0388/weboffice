@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -118,7 +119,7 @@ public class StorageService {
     public record StorageStats(long usedBytes, int fileCount) {}
 
     /**
-     * Uploads a file to the user's personal directory.
+     * Uploads a file to the user's personal directory from a MultipartFile.
      * Overwrites silently if the file already exists.
      */
     public void uploadFile(UserPrincipal user, String fileName, MultipartFile file) throws Exception {
@@ -134,6 +135,42 @@ public class StorageService {
                 .build();
 
         client.putObject(request);
+    }
+
+    /**
+     * Uploads a file to the user's personal directory from a byte array.
+     * Overwrites silently if the file already exists.
+     * Infers content type from file extension.
+     */
+    public void uploadFile(UserPrincipal user, String fileName, byte[] data) throws Exception {
+        String objectName = user.storagePrefixKey() + sanitizeFileName(fileName);
+        String contentType = inferContentType(fileName);
+
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
+
+        PutObjectRequest request = PutObjectRequest.builder()
+                .namespaceName(namespace)
+                .bucketName(bucket)
+                .objectName(objectName)
+                .contentLength((long) data.length)
+                .contentType(contentType)
+                .putObjectBody(inputStream)
+                .build();
+
+        client.putObject(request);
+    }
+
+    /**
+     * Infers content type based on file extension.
+     */
+    private String inferContentType(String fileName) {
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".hwp")) return "application/x-hwp";
+        if (lower.endsWith(".hwpx")) return "application/x-hwpx";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+        return "application/octet-stream";
     }
 
     /**

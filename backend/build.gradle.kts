@@ -30,6 +30,14 @@ dependencies {
     // hwplib — HWP binary parser. Published on Maven Central by neolord0.
     implementation("kr.dogfoot:hwplib:1.1.9")
 
+    // Apache POI — MS Office format parsing and writing
+    implementation("org.apache.poi:poi-ooxml:5.2.4")       // DOCX, XLSX, PPTX
+    implementation("org.apache.poi:poi:5.2.4")              // XLS (legacy)
+    implementation("org.apache.xmlbeans:xmlbeans:5.1.1")   // POI dependency
+
+    // Apache Commons for utility functions
+    implementation("org.apache.commons:commons-lang3:3.14.0")
+
     // Oracle OCI Object Storage SDK
     implementation("com.oracle.oci.sdk:oci-java-sdk-objectstorage:3.35.0")
     implementation("com.oracle.oci.sdk:oci-java-sdk-common:3.35.0")

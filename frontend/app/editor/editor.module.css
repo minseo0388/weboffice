@@ -2,37 +2,32 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #e9ecef;
-  font-family: 'Inter', sans-serif;
+  background: #f5f5f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   overflow: hidden;
 }
 
-/* ── Ribbon ── */
-.ribbon {
+.header {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.6rem 1.5rem;
-  background: #ffffff;
-  border-bottom: 1px solid #dee2e6;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
-  flex-wrap: wrap;
-  position: sticky;
-  top: 0;
-  z-index: 100;
 }
 
 .backBtn {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
   background: transparent;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  color: #495057;
-  font-size: 0.85rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  color: #333;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -40,209 +35,92 @@
 }
 
 .backBtn:hover {
-  background: #f8f9fa;
-  border-color: #adb5bd;
+  background: #f5f5f5;
+  border-color: #999;
 }
 
-.separator {
-  width: 1px;
-  height: 24px;
-  background: #dee2e6;
-  margin: 0 0.3rem;
-  flex-shrink: 0;
-}
-
-.spacer { flex: 1; }
-
-.select {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid #dee2e6;
-  border-radius: 7px;
-  background: #fff;
-  color: #212529;
-  font-size: 0.9rem;
-  font-family: inherit;
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.select:hover { border-color: #adb5bd; }
-
-/* Formatting buttons */
-.fmtBtn {
-  min-width: 36px;
-  height: 36px;
-  padding: 0 0.5rem;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: #495057;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.fmtBtn:hover {
-  background: #f8f9fa;
-  border-color: #dee2e6;
-}
-
-.fmtBtn.active {
-  background: #e7f0ff;
-  border-color: #339af0;
-  color: #1971c2;
-}
-
-/* Object buttons */
-.objectBtn {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.4rem 0.8rem;
-  border: 1px solid #dee2e6;
-  border-radius: 7px;
-  background: #f8f9fa;
-  color: #495057;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.objectBtn span {
-  font-size: 1.1rem;
-}
-
-.objectBtn:hover {
-  background: #e9ecef;
-  border-color: #adb5bd;
-}
-
-/* Filename label */
 .fileName {
-  font-size: 0.85rem;
-  color: #6c757d;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 240px;
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
 }
 
-/* Save button */
-.saveBtn {
-  padding: 0.55rem 1.4rem;
-  border: none;
-  border-radius: 8px;
-  background: #228be6;
-  color: #fff;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s;
-  white-space: nowrap;
-  box-shadow: 0 3px 12px rgba(34, 139, 230, 0.3);
-}
-
-.saveBtn:hover:not(:disabled) {
-  background: #1971c2;
-  box-shadow: 0 5px 16px rgba(34, 139, 230, 0.45);
-  transform: translateY(-1px);
-}
-
-.saveBtn.saving { background: #74c0fc; cursor: not-allowed; }
-.saveBtn.saved  { background: #2f9e44; box-shadow: 0 3px 12px rgba(47, 158, 68, 0.3); }
-.saveBtn.error  { background: #e03131; box-shadow: 0 3px 12px rgba(224, 49, 49, 0.3); }
-
-/* ── Canvas ── */
-.canvas {
+.spacer {
   flex: 1;
-  overflow-y: auto;
-  padding: 3rem 2rem;
+}
+
+.saveStatus {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.saveStatus.idle {
+  color: #6b7280;
+}
+
+.saveStatus.saving {
+  color: #2563eb;
+  background: #dbeafe;
+  animation: pulse 1.5s infinite;
+}
+
+.saveStatus.saved {
+  color: #059669;
+  background: #d1fae5;
+}
+
+.saveStatus.error {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.lastSaved {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.loadingState,
+.errorState,
+.emptyState {
   display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: flex-start;
+  flex: 1;
+  color: #6b7280;
+  font-size: 16px;
 }
 
-/* A4 page */
-.page {
-  width: 210mm;
-  min-height: 297mm;
-  background: #ffffff;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 12px 48px rgba(0, 0, 0, 0.06);
-  padding: 25.4mm;   /* 1 inch margins */
-  border-radius: 2px;
-  outline: none;
-  line-height: 1.75;
-  font-family: 'NanumGothic', sans-serif;
-  font-size: 14pt;
-  color: #212529;
-  cursor: text;
-  word-break: keep-all;
-  overflow-wrap: break-word;
+.loadingState p,
+.errorState p,
+.emptyState p {
+  margin: 0;
 }
 
-.page:focus {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.14), 0 12px 48px rgba(34, 139, 230, 0.08);
-}
-
-/* HWP content styles */
-.page :global(.hwp-heading) {
-  font-size: 20pt;
-  font-weight: 700;
-  margin-bottom: 1.2rem;
-}
-
-.page :global(.hwp-paragraph) {
-  margin-bottom: 0.5rem;
-}
-
-/* ── Loading / Error States ── */
-.loadingMsg {
-  display: flex;
+.errorState {
   flex-direction: column;
-  align-items: center;
-  gap: 1.2rem;
-  margin-top: 8rem;
-  color: #6c757d;
-  font-size: 1.1rem;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #dee2e6;
-  border-top-color: #228be6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.errorMsg {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   gap: 1rem;
-  margin-top: 8rem;
-  color: #e03131;
-  font-size: 1rem;
 }
 
-.errorMsg button {
-  padding: 0.6rem 1.4rem;
-  background: #e03131;
+.errorState button {
+  padding: 0.6rem 1.2rem;
+  background: #2563eb;
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 14px;
+  font-weight: 600;
   transition: background 0.2s;
 }
 
-.errorMsg button:hover { background: #c92a2a; }
+.errorState button:hover {
+  background: #1d4ed8;
+}
