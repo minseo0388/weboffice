@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  backend:
+    image: openjdk:17-jdk-slim
+    container_name: weboffice_backend
+    volumes:
+      - ./backend:/app
+      - /usr/share/fonts:/usr/share/fonts:ro
+    working_dir: /app
+    command: ./gradlew bootRun
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - ALLOWLIST_PATH=/app/allowlist.json
+      - ORACLE_NAMESPACE=${ORACLE_NS}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    restart: always
+
+  frontend:
+    image: node:20-alpine
+    container_name: weboffice_frontend
+    volumes:
+      - ./frontend:/app
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    restart: always

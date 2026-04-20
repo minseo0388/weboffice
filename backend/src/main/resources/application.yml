@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:dummy}
+            client-secret: ${GOOGLE_CLIENT_SECRET:dummy}
+            scope:
+              - openid
+              - email
+              - profile
+          discord:
+            client-id: ${DISCORD_CLIENT_ID:dummy}
+            client-secret: ${DISCORD_CLIENT_SECRET:dummy}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/discord"
+            scope:
+              - identify
+              - email
+              - guilds
+              - guilds.members.read
+        provider:
+          discord:
+            authorization-uri: https://discord.com/api/oauth2/authorize
+            token-uri: https://discord.com/api/oauth2/token
+            user-info-uri: https://discord.com/api/users/@me
+            user-name-attribute: id
+
+jwt:
+  secret:
+    key: ${JWT_SECRET_KEY:my_super_secret_local_dev_key_which_is_at_least_32_bytes_long!}
+
+discord:
+  required:
+    guild:
+      id: ${DISCORD_GUILD_ID:dummy}
+    role:
+      id: ${DISCORD_ROLE_ID:dummy}
+
+google:
+  allowlist:
+    path: ${ALLOWLIST_PATH:allowlist.json}
+
+frontend:
+  redirect:
+    url: ${FRONTEND_URL:http://localhost:3000/dashboard}
+
+oracle:
+  cloud:
+    namespace: ${ORACLE_NS:dummy-ns}
+    bucket: ${ORACLE_BUCKET:hangul-user-files}
