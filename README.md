@@ -1,33 +1,79 @@
 # WebOffice
 
-WebOffice는 Oracle Cloud Infrastructure(OCI)를 활용한 개인용 클라우드 HWP/HWPX 문서 에디터입니다.
+> A premium personal cloud HWP/HWPX document editor powered by Oracle Cloud Infrastructure.
 
-## 주요 기능
+WebOffice is an open-source web-based HWP/HWPX editor designed for individuals who need to manage their Korean documents in a secure, personal cloud environment. It features dual OAuth2 authentication (Google and Discord) and utilizes OCI Object Storage for reliable file persistence.
 
-- **HWP/HWPX 파싱:** `hwplib`를 연동하여 바이너리 및 XML 기반 한글 문서를 브라우저에서 즉시 확인.
-- **실시간 편집:** WYSIWYG 에디터를 통해 글꼴, 크기, 스타일, 정렬 및 표/이미지 삽입 지원.
-- **보안 스토리지:** OCI Object Storage API를 직접 연동하여 개인별 격리된 클라우드 공간 제공.
-- **통합 인증:** Discord 및 Google OAuth2를 지원하며, Discord 서버 기반의 강화된 접근 권한 제어.
+## Table of Contents
 
-## 기술 스택
+- [Install](#install)
+- [Usage](#usage)
+- [Maintainers](#maintainers)
+- [Contributing](#contributing)
+- [License](#license)
 
-- **Frontend:** Next.js, React, CSS Modules
-- **Backend:** Spring Boot, Java 17, Gradle (KTS)
-- **Library:** kr.dogfoot:hwplib (한글 문서 파싱)
-- **Cloud:** Oracle Cloud Infrastructure (OCI Object Storage)
+## Install
 
-## 시작하기
+### Prerequisites
 
-### 백엔드 설정
+- Java 17 or higher
+- Node.js 20 or higher
+- Oracle Cloud Infrastructure (OCI) Account
+- Discord/Google Developer Console Access (for OAuth2)
 
-1. `backend/src/main/resources/application.yml`의 환경변수 설정.
-2. `./gradlew bootRun`으로 서버 실행 (기본 8080 포트).
+### Clone
 
-### 프론트엔드 설정
+```bash
+git clone https://github.com/minseo0388/weboffice.git
+cd weboffice
+```
 
-1. `frontend` 폴더에서 `npm install` 실행.
-2. `npm run dev`로 개발 서버 실행 (기본 3000 포트).
+### Backend Setup
 
-## 라이선스
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   ```
+2. Configure `src/main/resources/application.yml` with your OCI and OAuth2 credentials. Or set environment variables:
+   - `ORACLE_NS`, `GOOGLE_CLIENT_ID`, `DISCORD_CLIENT_ID`, `JWT_SECRET_KEY`, etc.
+3. Build and run:
+   ```bash
+   ./gradlew bootRun
+   ```
 
-이 프로젝트는 개인 학습 및 개인용 클라우드 구축을 위해 개발되었습니다.
+### Frontend Setup
+
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+## Usage
+
+1. Open your browser and navigate to `http://localhost:3000`.
+2. Sign in using Google or Discord.
+3. Upload HWP/HWPX files to your personal dashboard.
+4. Click on a file to open the premium WYSIWYG editor.
+5. Edit text, insert tables, upload images, and save changes back to your OCI bucket.
+
+## Maintainers
+
+[@minseo0388](https://github.com/minseo0388)
+
+## Contributing
+
+PRs accepted. Feel free to dive in! [Open an issue](https://github.com/minseo0388/weboffice/issues/new) or submit PRs.
+
+Standard Readme follows the [Contributor Covenant](https://www.contributorcovenant.org/version/2/0/code_of_conduct/) Code of Conduct.
+
+## License
+
+MIT © minseo0388

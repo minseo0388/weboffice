@@ -2,6 +2,7 @@
   "name": "weboffice-frontend",
   "version": "0.1.0",
   "private": true,
+  "author": "minseo0388",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
