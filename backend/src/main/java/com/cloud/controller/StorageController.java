@@ -80,7 +80,7 @@ public class StorageController {
             byte[] bytes = stream.readAllBytes();
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
                     .body(bytes);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();

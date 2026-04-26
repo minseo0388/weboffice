@@ -6,6 +6,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -50,6 +51,7 @@ public class AuthService {
     /**
      * Validates Discord User by verifying Guild & Role membership via Discord API
      */
+    @SuppressWarnings({"null", "unchecked"})
     public boolean validateDiscordUser(String accessToken) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -58,14 +60,18 @@ public class AuthService {
 
             // 1. Fetch user's guilds
             String guildsUrl = "https://discord.com/api/users/@me/guilds";
-            @SuppressWarnings("rawtypes")
-            ResponseEntity<List> guildsResponse = restTemplate.exchange(guildsUrl, HttpMethod.GET, entity, List.class);
+            ResponseEntity<List<Map<String, Object>>> guildsResponse = restTemplate.exchange(
+                    guildsUrl, 
+                    HttpMethod.GET, 
+                    entity, 
+                    new ParameterizedTypeReference<List<Map<String, Object>>>() {}
+            );
             
-            if (guildsResponse.getBody() == null) return false;
+            List<Map<String, Object>> guilds = guildsResponse.getBody();
+            if (guilds == null) return false;
             
             boolean inGuild = false;
-            for (Object g : guildsResponse.getBody()) {
-                Map<String, Object> guild = (Map<String, Object>) g;
+            for (Map<String, Object> guild : guilds) {
                 if (requiredGuildId.equals(guild.get("id"))) {
                     inGuild = true;
                     break;
@@ -75,12 +81,17 @@ public class AuthService {
 
             // 2. Fetch specific guild member info (to traverse roles)
             String memberUrl = "https://discord.com/api/users/@me/guilds/" + requiredGuildId + "/member";
-            @SuppressWarnings("rawtypes")
-            ResponseEntity<Map> memberResponse = restTemplate.exchange(memberUrl, HttpMethod.GET, entity, Map.class);
+            ResponseEntity<Map<String, Object>> memberResponse = restTemplate.exchange(
+                    memberUrl, 
+                    HttpMethod.GET, 
+                    entity, 
+                    new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
             
-            if (memberResponse.getBody() == null) return false;
+            Map<String, Object> memberInfo = memberResponse.getBody();
+            if (memberInfo == null) return false;
             
-            List<String> roles = (List<String>) memberResponse.getBody().get("roles");
+            List<String> roles = (List<String>) memberInfo.get("roles");
             return roles != null && roles.contains(requiredRoleId);
 
         } catch (Exception e) {

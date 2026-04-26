@@ -31,6 +31,32 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
   const [fontSize, setFontSize] = useState(14);
   const [fontName, setFontName] = useState('NanumGothic');
   const textInputRef = useRef<HTMLInputElement>(null);
+  
+  // ── Cursor Persistence (Phase 4 Audit) ──
+  const selectionRef = useRef<{ start: number | null; end: number | null }>({ start: null, end: null });
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean } | null>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, visible: true });
+  }, []);
+
+  useEffect(() => {
+    const closeMenu = () => setContextMenu(null);
+    if (contextMenu?.visible) {
+      window.addEventListener('click', closeMenu);
+      return () => window.removeEventListener('click', closeMenu);
+    }
+  }, [contextMenu?.visible]);
+
+  const handleContextMenuAction = (action: string) => {
+    // Phase 3 parity: "우클릭 시 '복사/붙여넣기', '표 속성', '셀 병합' 등이 담긴 전용 메뉴"
+    console.log('Action triggered:', action);
+    setContextMenu(null);
+  };
+
 
   // Memoize document structure for performance
   const documentTitle = useMemo(() => document.title || 'Untitled Document', [document.title]);
@@ -58,40 +84,45 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
   );
 
   /**
-   * Handle text input change
+   * Handle text input change & auto-sync to trigger auto-save
    */
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    selectionRef.current = {
+      start: e.target.selectionStart,
+      end: e.target.selectionEnd,
+    };
     const newText = e.target.value;
     setEditState((prev) => (prev ? { ...prev, text: newText } : null));
+
+    if (editState) {
+      const updatedSections = sections.map((section, sIdx) =>
+        sIdx === editState.sectionIdx
+          ? {
+              ...section,
+              paragraphs: section.paragraphs.map((para, pIdx) =>
+                pIdx === editState.paraIdx
+                  ? { ...para, text: newText, fontSize, fontName }
+                  : para
+              ),
+            }
+          : section
+      );
+      onContentChange({ ...document, sections: updatedSections });
+    }
   };
 
-  /**
-   * Apply text changes: update document model and trigger save
-   */
+  // Restore cursor after re-render due to auto-save sync
+  useEffect(() => {
+    if (textInputRef.current && selectionRef.current.start !== null) {
+      textInputRef.current.setSelectionRange(selectionRef.current.start, selectionRef.current.end);
+    }
+  });
+
   const handleSaveText = useCallback(() => {
-    if (!editState) return;
-
-    const updatedSections = sections.map((section, sIdx) =>
-      sIdx === editState.sectionIdx
-        ? {
-            ...section,
-            paragraphs: section.paragraphs.map((para, pIdx) =>
-              pIdx === editState.paraIdx
-                ? { ...para, text: editState.text, fontSize, fontName }
-                : para
-            ),
-          }
-        : section
-    );
-
-    const updatedModel: TextDocumentModel = {
-      ...document,
-      sections: updatedSections,
-    };
-
-    onContentChange(updatedModel);
+    // onContentChange is now handled in handleTextChange to support real-time auto-save.
+    // This just exits the edit state.
     setEditState(null);
-  }, [editState, fontSize, fontName, sections, document, onContentChange]);
+  }, []);
 
   /**
    * Handle keyboard input in editor
@@ -191,60 +222,98 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
         <p className={styles.subtitle}>{document.format.toUpperCase()} Document</p>
       </div>
 
-      {/* ─ Canvas ─ */}
-      <div className={styles.canvas}>
-        {sections.length === 0 ? (
-          <div className={styles.emptyState}>
-            <p>문서가 비어있습니다.</p>
-          </div>
-        ) : (
-          sections.map((section, sectionIdx) => (
-            <div key={sectionIdx} className={styles.section}>
-              {section.paragraphs.map((para, paraIdx) => {
-                const isEditing =
-                  editState?.sectionIdx === sectionIdx && editState?.paraIdx === paraIdx;
+      {/* ─ Editor Workspace (Ruler + Canvas) ─ */}
+      <div className={styles.editorWorkspace} onContextMenu={handleContextMenu}>
+        {/* Top Ruler */}
+        <div className={styles.topRuler}>
+          {[...Array(20)].map((_, i) => (
+            <div key={i} className={styles.rulerMarkTop}>
+              <span className={styles.rulerText}>{i}</span>
+            </div>
+          ))}
+        </div>
 
-                return (
-                  <div
-                    key={paraIdx}
-                    className={`${styles.paragraph} ${isEditing ? styles.editing : ''}`}
-                    style={{
-                      textAlign: para.align || 'left',
-                      fontFamily: para.fontName || fontName || 'NanumGothic',
-                      fontSize: `${para.fontSize || fontSize || 14}pt`,
-                      color: para.textColor || '#111827',
-                      fontWeight: para.bold ? 'bold' : 'normal',
-                      fontStyle: para.italic ? 'italic' : 'normal',
-                      textDecoration: para.underline ? 'underline' : 'none',
-                    }}
-                  >
-                    {isEditing ? (
-                      <input
-                        ref={textInputRef}
-                        type="text"
-                        value={editState.text}
-                        onChange={handleTextChange}
-                        onBlur={handleSaveText}
-                        onKeyDown={handleKeyDown}
-                        className={styles.input}
+        <div className={styles.workspaceBody}>
+          {/* Left Ruler */}
+          <div className={styles.leftRuler}>
+            {[...Array(30)].map((_, i) => (
+              <div key={i} className={styles.rulerMarkLeft}>
+                <span className={styles.rulerText}>{i}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ─ Canvas ─ */}
+          <div className={styles.canvas}>
+            {sections.length === 0 ? (
+              <div className={styles.emptyState}>
+                <p>문서가 비어있습니다.</p>
+              </div>
+            ) : (
+              sections.map((section, sectionIdx) => (
+                <div key={sectionIdx} className={styles.section}>
+                  {section.paragraphs.map((para, paraIdx) => {
+                    const isEditing =
+                      editState?.sectionIdx === sectionIdx && editState?.paraIdx === paraIdx;
+
+                    return (
+                      <div
+                        key={paraIdx}
+                        className={`${styles.paragraph} ${isEditing ? styles.editing : ''}`}
                         style={{
+                          textAlign: para.align || 'left',
                           fontFamily: para.fontName || fontName || 'NanumGothic',
                           fontSize: `${para.fontSize || fontSize || 14}pt`,
                           color: para.textColor || '#111827',
+                          fontWeight: para.bold ? 'bold' : 'normal',
+                          fontStyle: para.italic ? 'italic' : 'normal',
+                          textDecoration: para.underline ? 'underline' : 'none',
                         }}
-                      />
-                    ) : (
-                      <span onClick={() => handleParagraphClick(sectionIdx, paraIdx, para)}>
-                        {para.text || '(empty)'}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))
-        )}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={textInputRef}
+                            type="text"
+                            value={editState.text}
+                            onChange={handleTextChange}
+                            onBlur={handleSaveText}
+                            onKeyDown={handleKeyDown}
+                            className={styles.input}
+                            style={{
+                              fontFamily: para.fontName || fontName || 'NanumGothic',
+                              fontSize: `${para.fontSize || fontSize || 14}pt`,
+                              color: para.textColor || '#111827',
+                            }}
+                          />
+                        ) : (
+                          <span onClick={() => handleParagraphClick(sectionIdx, paraIdx, para)}>
+                            {para.text || '(empty)'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* ─ Custom Context Menu ─ */}
+      {contextMenu?.visible && (
+        <div
+          className={styles.contextMenu}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button onClick={() => handleContextMenuAction('copy')}>복사 (Copy)</button>
+          <button onClick={() => handleContextMenuAction('paste')}>붙여넣기 (Paste)</button>
+          <hr />
+          <button onClick={() => handleContextMenuAction('table_props')}>표 속성...</button>
+          <button onClick={() => handleContextMenuAction('merge_cells')}>셀 병합</button>
+          <button onClick={() => handleContextMenuAction('insert_row')}>줄 추가/삭제</button>
+        </div>
+      )}
     </div>
   );
 });

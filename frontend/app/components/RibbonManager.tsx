@@ -17,6 +17,7 @@ interface RibbonManagerProps {
   onTextAction: (action: TextToolAction) => void;
   onSpreadsheetAction: (action: SpreadsheetToolAction) => void;
   onPresentationAction: (action: PresentationToolAction) => void;
+  onExportPdf?: () => void;
 }
 
 function SaveIndicator({ saveStatus, lastSavedTime }: Pick<RibbonManagerProps, 'saveStatus' | 'lastSavedTime'>) {
@@ -40,6 +41,7 @@ export default function RibbonManager({
   onTextAction,
   onSpreadsheetAction,
   onPresentationAction,
+  onExportPdf,
 }: RibbonManagerProps) {
   const normalized = String(fileType || 'unknown').toLowerCase() as FileType;
   const isExcel = normalized === 'xlsx' || normalized === 'xls';
@@ -48,11 +50,29 @@ export default function RibbonManager({
   return (
     <div className={styles.ribbonRoot}>
       <div className={styles.tabRow}>
-        <button className={`${styles.tab} ${styles.activeTab}`}>Home</button>
-        <button className={styles.tab}>Insert</button>
-        <button className={styles.tab}>Layout</button>
-        {isExcel && <button className={styles.tab}>Formulas</button>}
-        {isPpt && <button className={styles.tab}>Slide</button>}
+        <div style={{ display: 'flex' }}>
+          <button className={`${styles.tab} ${styles.activeTab}`}>Home</button>
+          <button className={styles.tab}>Insert</button>
+          <button className={styles.tab}>Layout</button>
+          {isExcel && <button className={styles.tab}>Formulas</button>}
+          {isPpt && <button className={styles.tab}>Slide</button>}
+        </div>
+        {onExportPdf && (
+          <button className={styles.exportPdfBtn} onClick={onExportPdf} style={{
+            marginLeft: 'auto',
+            marginRight: '1rem',
+            padding: '4px 12px',
+            background: '#ef4444',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 'bold'
+          }}>
+            🖨 Print (PDF)
+          </button>
+        )}
       </div>
 
       {isExcel ? (

@@ -136,7 +136,7 @@ export default function DashboardMain() {
       <header className={styles.header}>
         <div className={styles.logoGroup}>
           <div className={styles.sphere} />
-          <h1>Hancom Cloud</h1>
+          <h1>naesungOffice</h1>
         </div>
         <div className={styles.userBar}>
           <div className={styles.providerBadge}>

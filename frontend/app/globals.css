@@ -12,6 +12,31 @@ html, body {
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+  color: #333;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Phase 4: Dark Mode Implementation (Invert trick for full app coverage without massive CSS rewrites) */
+@media (prefers-color-scheme: dark) {
+  html {
+    filter: invert(0.92) hue-rotate(180deg);
+  }
+  
+  /* Re-invert media, images, or specific dynamic elements to keep their original colors */
+  img, video, canvas, .sphere {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Final Polish: Dialog and Menu Animations */
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.95) translateY(-10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+[class*="contextMenu"], dialog, [class*="modal"] {
+  animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Serve NanumGothic from /public/fonts/ as WOFF2 */

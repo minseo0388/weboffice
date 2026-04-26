@@ -24,6 +24,8 @@ public class CorsConfig {
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:3000",
                 "https://*.nip.io",          // Oracle Cloud IP-based domains
+                "https://naesung.kr",
+                "https://*.naesung.kr",
                 "${cors.allowed.origins:}"   // Customizable via env var in production
         ));
 

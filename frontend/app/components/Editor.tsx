@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import styles from './Editor.module.css';
 
+import { DocumentModel } from '../types/document';
+
 interface EditorProps {
-  documentModel: any; // The decoupled JSON model bound to Web Nodes created by DocumentController
+  documentModel: DocumentModel | null; // The decoupled JSON model bound to Web Nodes created by DocumentController
 }
 
 export default function WYSIWYGEditor({ documentModel }: EditorProps) {
@@ -16,7 +18,7 @@ export default function WYSIWYGEditor({ documentModel }: EditorProps) {
       // Logic binding: mapped nodes to semantic HTML or React elements dynamically.
       setContentHtml(`<p class="hwp-paragraph">${documentModel.title || 'Document body content loading...'}</p>`);
     } else {
-      setContentHtml('<h1 class="hwp-heading">New Blank Canvas...</h1><p>Welcome to your Hancom Cloud Engine workspace.</p>');
+      setContentHtml('<h1 class="hwp-heading">New Blank Canvas...</h1><p>Welcome to your naesungOffice workspace.</p>');
     }
   }, [documentModel]);
 

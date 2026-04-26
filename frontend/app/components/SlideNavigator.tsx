@@ -29,12 +29,51 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [editingShape, setEditingShape] = useState<{ shape: number; text: string } | null>(null);
   const [selectedShapeIdx, setSelectedShapeIdx] = useState<number | null>(null);
+  const [dragState, setDragState] = useState<{ shapeIdx: number; startX: number; startY: number; initX: number; initY: number } | null>(null);
 
   const activeSlide = slides[activeSlideIdx];
 
   const handleShapeClick = (shapeIdx: number, currentText: string) => {
+    // Only go into edit mode on double click or specific edit button, but for parity, 
+    // click will select, double click will edit. For now, let's keep click for edit if not dragging.
     setSelectedShapeIdx(shapeIdx);
+  };
+
+  const handleShapeDoubleClick = (shapeIdx: number, currentText: string) => {
     setEditingShape({ shape: shapeIdx, text: currentText });
+  };
+
+  const handlePointerDown = (e: React.PointerEvent, shapeIdx: number, shape: SlideShape) => {
+    if (editingShape?.shape === shapeIdx) return;
+    
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragState({
+      shapeIdx,
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: shape.x,
+      initY: shape.y
+    });
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    
+    const shape = slides[activeSlideIdx].shapes[dragState.shapeIdx];
+    onShapeFormatChange(activeSlideIdx, dragState.shapeIdx, {
+      ...shape,
+      x: dragState.initX + dx,
+      y: dragState.initY + dy
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (dragState) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      setDragState(null);
+    }
   };
 
   const handleTextSave = useCallback(() => {
@@ -158,8 +197,14 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                 width: `${shape.width}px`,
                 height: `${shape.height}px`,
                 overflow: 'hidden',
+                cursor: editingShape?.shape === shapeIdx ? 'text' : 'move',
+                border: selectedShapeIdx === shapeIdx ? '1px dashed #666' : 'none',
               }}
               onClick={() => handleShapeClick(shapeIdx, shape.text)}
+              onDoubleClick={() => handleShapeDoubleClick(shapeIdx, shape.text)}
+              onPointerDown={(e) => handlePointerDown(e, shapeIdx, shape)}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
             >
               {editingShape?.shape === shapeIdx ? (
                 <textarea

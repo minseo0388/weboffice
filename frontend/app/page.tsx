@@ -10,7 +10,7 @@ export default function LandingPage() {
       <nav className={styles.navbar}>
         <div className={styles.logoGroup}>
           <div className={styles.logoMark} />
-          <span className={styles.logoText}>Hangul Cloud</span>
+          <span className={styles.logoText}>naesungOffice</span>
         </div>
         <div className={styles.navLinks}>
           <a href="#features">Features</a>

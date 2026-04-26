@@ -6,23 +6,68 @@
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Sheet Tabs */
+/* Formula Bar */
+.formulaBar {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: #fdfdfd;
+  border-bottom: 1px solid #ddd;
+  gap: 12px;
+}
+
+.cellRefDisplay {
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid #ccc;
+  min-width: 45px;
+  text-align: center;
+  font-weight: bold;
+  color: #333;
+  font-size: 13px;
+}
+
+.formulaIcon {
+  font-style: italic;
+  font-weight: bold;
+  color: #666;
+  user-select: none;
+  font-size: 14px;
+}
+
+.formulaInput {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  outline: none;
+  font-size: 13px;
+}
+
+.formulaInput:focus {
+  border-color: #2563eb;
+}
+
+/* Bottom Sheet Bar */
+.bottomSheetBar {
+  display: flex;
+  align-items: center;
+  background: #f5f5f5;
+  border-top: 1px solid #ccc;
+  padding-right: 1rem;
+}
+
 .sheetTabs {
   display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
+  flex: 1;
   overflow-x: auto;
-  flex-shrink: 0;
 }
 
 .sheetTab {
-  padding: 0.5rem 1rem;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
+  padding: 0.6rem 1.2rem;
+  background: transparent;
+  border: none;
+  border-right: 1px solid #ddd;
+  border-bottom: 3px solid transparent;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -32,14 +77,26 @@
 }
 
 .sheetTab:hover {
-  background: #f9f9f9;
-  color: #333;
+  background: #ebebeb;
 }
 
 .sheetTab.active {
   background: #fff;
   color: #2563eb;
-  border-color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+.addSheetBtn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 10px;
+  color: #666;
+}
+
+.addSheetBtn:hover {
+  color: #333;
 }
 
 /* Grid Container */
@@ -95,9 +152,14 @@
   background: #f0f7ff;
 }
 
+.gridCell.selectedRange {
+  background: #eef2ff;
+}
+
 .gridCell.selected {
   outline: 2px solid #2563eb;
   outline-offset: -2px;
+  background: #eef2ff;
 }
 
 .gridCell:focus {

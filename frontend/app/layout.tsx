@@ -6,7 +6,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "WebOffice - Cloud Workspace",
+  title: "naesungOffice",
   description: "Personal cloud document editor for HWP/HWPX files",
 };
 
