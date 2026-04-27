@@ -59,6 +59,19 @@ public class PresentationService {
                 }
             }
             
+            slideData.put("isHidden", slide.isHidden());
+            
+            XSLFNotes notes = slide.getNotes();
+            if (notes != null) {
+                StringBuilder notesText = new StringBuilder();
+                for (XSLFShape shape : notes.getShapes()) {
+                    if (shape instanceof XSLFTextShape) {
+                        notesText.append(((XSLFTextShape) shape).getText()).append("\n");
+                    }
+                }
+                slideData.put("notes", notesText.toString().trim());
+            }
+
             slideData.put("shapes", shapes);
             slides.add(slideData);
             slideIndex++;
@@ -130,24 +143,91 @@ public class PresentationService {
         List<Map<String, Object>> slides = (List<Map<String, Object>>) model.get("slides");
         
         if (slides != null) {
+            // Remove extra slides
+            while (slideShow.getSlides().size() > slides.size()) {
+                slideShow.removeSlide(slideShow.getSlides().size() - 1);
+            }
+            
+            // Add missing slides
+            while (slideShow.getSlides().size() < slides.size()) {
+                slideShow.createSlide();
+            }
+
+            // Update all slides
             int slideIndex = 0;
             for (XSLFSlide slide : slideShow.getSlides()) {
-                if (slideIndex >= slides.size()) break;
-                
                 Map<String, Object> slideData = slides.get(slideIndex);
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> shapes = (List<Map<String, Object>>) slideData.get("shapes");
                 
                 if (shapes != null) {
-                    int shapeIndex = 0;
-                    for (XSLFShape shape : slide.getShapes()) {
-                        if (shapeIndex >= shapes.size()) break;
-                        if (shape instanceof XSLFTextShape) {
-                            XSLFTextShape textShape = (XSLFTextShape) shape;
-                            Map<String, Object> shapeData = shapes.get(shapeIndex);
-                            updateTextShape(textShape, shapeData);
+                    // Remove existing shapes safely by clearing the slide
+                    // Wait, clearing the slide removes all content. Let's just create a new list of text shapes to keep and remove the rest.
+                    List<XSLFShape> existingShapes = new ArrayList<>(slide.getShapes());
+                    for (XSLFShape shape : existingShapes) {
+                        slide.removeShape(shape);
+                    }
+
+                    // Re-create all shapes based on the JSON model
+                    for (Map<String, Object> shapeData : shapes) {
+                        String type = (String) shapeData.getOrDefault("type", "text");
+                        XSLFAutoShape autoShape = slide.createAutoShape();
+                        
+                        if ("rect".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
+                        } else if ("ellipse".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.ELLIPSE);
+                        } else if ("triangle".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.TRIANGLE);
+                        } else if ("right_arrow".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RIGHT_ARROW);
+                        } else if ("hexagon".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.HEXAGON);
+                        } else if ("star".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.STAR_5);
+                        } else if ("round_rect".equals(type)) {
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.ROUND_RECT);
+                        } else {
+                            // Text box
+                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
+                            autoShape.setFillColor(null);
+                            autoShape.setLineColor(null);
                         }
-                        shapeIndex++;
+                        
+                        updateTextShape(autoShape, shapeData);
+                        
+                        // Set position and size
+                        Number x = (Number) shapeData.get("x");
+                        Number y = (Number) shapeData.get("y");
+                        Number w = (Number) shapeData.get("width");
+                        Number h = (Number) shapeData.get("height");
+                        if (x != null && y != null && w != null && h != null) {
+                            autoShape.setAnchor(new java.awt.geom.Rectangle2D.Double(
+                                x.doubleValue(), y.doubleValue(), w.doubleValue(), h.doubleValue()
+                            ));
+                        }
+                    }
+                }
+                
+                Boolean isHidden = (Boolean) slideData.get("isHidden");
+                if (isHidden != null) {
+                    slide.setHidden(isHidden);
+                }
+                
+                String notesText = (String) slideData.get("notes");
+                if (notesText != null && !notesText.isEmpty()) {
+                    XSLFNotes notes = slide.getNotes();
+                    if (notes == null) {
+                        // POI doesn't easily support creating notes from scratch if they don't exist, 
+                        // but we can try slideShow.getNotesMaster() or just skip if null for this basic implementation.
+                    } else {
+                        // Clear and set notes
+                        for (XSLFShape shape : notes.getShapes()) {
+                            if (shape instanceof XSLFTextShape) {
+                                ((XSLFTextShape) shape).setText(notesText);
+                                break;
+                            }
+                        }
                     }
                 }
                 
@@ -155,7 +235,6 @@ public class PresentationService {
             }
         }
         
-        // Write to byte array
         java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
         slideShow.write(outputStream);
         slideShow.close();
@@ -163,33 +242,32 @@ public class PresentationService {
         return outputStream.toByteArray();
     }
 
-    /**
-     * Update text content and basic formatting in a shape.
-     */
     private void updateTextShape(XSLFTextShape textShape, Map<String, Object> shapeData) {
         String newText = (String) shapeData.get("text");
         @SuppressWarnings("unchecked")
         Map<String, Object> formatting = (Map<String, Object>) shapeData.get("formatting");
         
         if (newText != null) {
-            // Clear existing text
-            while (textShape.getTextParagraphs().size() > 1) {
-                textShape.removeTextParagraph(textShape.getTextParagraphs().get(1));
-            }
-            
-            XSLFTextParagraph paragraph = textShape.getTextParagraphs().get(0);
-                   // Clear existing text runs
-            
-                   // Remove all text runs from the paragraph
-                   java.util.List<XSLFTextRun> runs = new java.util.ArrayList<>(paragraph.getTextRuns());
-                   for (XSLFTextRun run : runs) {
-                       paragraph.removeTextRun(run);
-                   }
+            textShape.clearText();
+            XSLFTextParagraph paragraph = textShape.addNewTextParagraph();
             XSLFTextRun run = paragraph.addNewTextRun();
             run.setText(newText);
             
-            // Apply formatting if provided
             if (formatting != null) {
+                // Text Alignment
+                if (formatting.containsKey("align")) {
+                    String align = (String) formatting.get("align");
+                    if ("center".equals(align)) paragraph.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.CENTER);
+                    else if ("right".equals(align)) paragraph.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.RIGHT);
+                    else if ("justify".equals(align)) paragraph.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.JUSTIFY);
+                    else paragraph.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.LEFT);
+                }
+                
+                // Bullet points
+                if (formatting.containsKey("bullet")) {
+                    paragraph.setBullet((Boolean) formatting.get("bullet"));
+                }
+                
                 if (formatting.containsKey("bold")) {
                     run.setBold((Boolean) formatting.get("bold"));
                 }

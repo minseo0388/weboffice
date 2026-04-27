@@ -12,6 +12,14 @@ interface SlideNavigatorProps {
   slides: PresentationSlide[];
   onTextChange: (slideIdx: number, shapeIdx: number, newText: string) => void;
   onShapeFormatChange: (slideIdx: number, shapeIdx: number, shape: SlideShape) => void;
+  onSlideAdd: (afterIdx: number) => void;
+  onSlideDelete: (slideIdx: number) => void;
+  onShapeAdd: (slideIdx: number, type?: string, imageUrl?: string) => void;
+  onShapeDelete: (slideIdx: number, shapeIdx: number) => void;
+  onSlideMove: (slideIdx: number, direction: 'up' | 'down') => void;
+  onSlideToggleVisibility: (slideIdx: number) => void;
+  onSlideNotesUpdate: (slideIdx: number, notes: string) => void;
+  onAITranslate?: (slideIdx: number) => void;
 }
 
 export interface SlideNavigatorHandle {
@@ -23,13 +31,14 @@ export interface SlideNavigatorHandle {
  * Supports slide-by-slide navigation and text editing within shapes.
  */
 const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(function SlideNavigator(
-  { slides, onTextChange, onShapeFormatChange }: SlideNavigatorProps,
+  { slides, onTextChange, onShapeFormatChange, onSlideAdd, onSlideDelete, onShapeAdd, onShapeDelete, onSlideMove, onSlideToggleVisibility, onSlideNotesUpdate, onAITranslate }: SlideNavigatorProps,
   ref
 ) {
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [editingShape, setEditingShape] = useState<{ shape: number; text: string } | null>(null);
   const [selectedShapeIdx, setSelectedShapeIdx] = useState<number | null>(null);
   const [dragState, setDragState] = useState<{ shapeIdx: number; startX: number; startY: number; initX: number; initY: number } | null>(null);
+  const [isPresentMode, setIsPresentMode] = useState(false);
 
   const activeSlide = slides[activeSlideIdx];
 
@@ -116,6 +125,83 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         return;
       }
 
+      if (action.type === 'addSlide') {
+        onSlideAdd(activeSlideIdx);
+        setActiveSlideIdx(activeSlideIdx + 1);
+        setSelectedShapeIdx(null);
+        return;
+      }
+
+      if (action.type === 'deleteSlide') {
+        onSlideDelete(activeSlideIdx);
+        setActiveSlideIdx(Math.max(0, activeSlideIdx - 1));
+        setSelectedShapeIdx(null);
+        return;
+      }
+
+      if (action.type === 'addShape') {
+        onShapeAdd(activeSlideIdx, 'text');
+        return;
+      }
+
+      if (action.type === 'addRect') {
+        onShapeAdd(activeSlideIdx, 'rect');
+        return;
+      }
+
+      if (action.type === 'addEllipse') {
+        onShapeAdd(activeSlideIdx, 'ellipse');
+        return;
+      }
+
+      if (action.type === 'addTriangle') {
+        onShapeAdd(activeSlideIdx, 'triangle');
+        return;
+      }
+
+      if (action.type === 'addRightArrow') {
+        onShapeAdd(activeSlideIdx, 'right_arrow');
+        return;
+      }
+
+      if (action.type === 'addHexagon') {
+        onShapeAdd(activeSlideIdx, 'hexagon');
+        return;
+      }
+
+      if (action.type === 'addStar') {
+        onShapeAdd(activeSlideIdx, 'star');
+        return;
+      }
+
+      if (action.type === 'addRoundRect') {
+        onShapeAdd(activeSlideIdx, 'round_rect');
+        return;
+      }
+
+      if (action.type === 'addImage') {
+        onShapeAdd(activeSlideIdx, 'image', action.value);
+        return;
+      }
+
+      if (action.type === 'togglePresentMode') {
+        setIsPresentMode(!isPresentMode);
+        return;
+      }
+
+      if (action.type === 'aiTranslate') {
+        if (onAITranslate) onAITranslate(activeSlideIdx);
+        return;
+      }
+
+      if (action.type === 'deleteShape') {
+        if (selectedShapeIdx !== null) {
+          onShapeDelete(activeSlideIdx, selectedShapeIdx);
+          setSelectedShapeIdx(null);
+        }
+        return;
+      }
+
       if (selectedShapeIdx === null) {
         return;
       }
@@ -147,6 +233,14 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
 
       if (action.type === 'textColor') {
         nextShape.formatting.color = action.value;
+      }
+
+      if (action.type === 'align') {
+        nextShape.formatting.align = action.value;
+      }
+
+      if (action.type === 'bullet') {
+        nextShape.formatting.bullet = !nextShape.formatting.bullet;
       }
 
       onShapeFormatChange(activeSlideIdx, selectedShapeIdx, nextShape);
@@ -183,7 +277,16 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
       </div>
 
       {/* Slide Canvas */}
-      <div className={styles.slideCanvas}>
+      <div 
+        className={styles.slideCanvas}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.key === 'Delete' || e.key === 'Backspace') && selectedShapeIdx !== null && editingShape === null) {
+            onShapeDelete(activeSlideIdx, selectedShapeIdx);
+            setSelectedShapeIdx(null);
+          }
+        }}
+      >
         <div className={styles.slide}>
           {/* Render shapes on slide */}
           {activeSlide.shapes.map((shape, shapeIdx) => (
@@ -214,6 +317,19 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                   onBlur={handleTextSave}
                   onKeyDown={handleKeyDown}
                   autoFocus
+                  style={{
+                    textAlign: shape.formatting.align || 'left',
+                    background: shape.backgroundColor || 'transparent',
+                    borderRadius: shape.type === 'ellipse' ? '50%' : (shape.type === 'round_rect' ? '12px' : '0'),
+                    clipPath: shape.type === 'triangle' ? 'polygon(50% 0%, 0% 100%, 100% 100%)' : shape.type === 'right_arrow' ? 'polygon(0% 20%, 60% 20%, 60% 0%, 100% 50%, 60% 100%, 60% 80%, 0% 80%)' : shape.type === 'hexagon' ? 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' : shape.type === 'star' ? 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' : 'none'
+                  }}
+                />
+              ) : shape.type === 'image' && shape.imageUrl ? (
+                <img
+                  src={shape.imageUrl}
+                  alt="Slide Image"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  draggable={false}
                 />
               ) : (
                 <div
@@ -225,11 +341,20 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                     fontSize: shape.formatting.fontSize ? `${shape.formatting.fontSize}pt` : 'inherit',
                     fontFamily: shape.formatting.fontName || 'Calibri, sans-serif',
                     color: shape.formatting.color || '#111827',
-                    padding: '4px 8px',
+                    padding: '8px',
                     wordWrap: 'break-word',
                     whiteSpace: 'pre-wrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: shape.formatting.align === 'center' ? 'center' : shape.formatting.align === 'right' ? 'flex-end' : 'flex-start',
+                    textAlign: shape.formatting.align || 'left',
+                    background: shape.backgroundColor || 'transparent',
+                    border: shape.borderWidth && shape.type !== 'triangle' && shape.type !== 'right_arrow' && shape.type !== 'hexagon' && shape.type !== 'star' ? `${shape.borderWidth}px solid ${shape.borderColor || '#000'}` : 'none',
+                    borderRadius: shape.type === 'ellipse' ? '50%' : (shape.type === 'round_rect' ? '12px' : '0'),
+                    clipPath: shape.type === 'triangle' ? 'polygon(50% 0%, 0% 100%, 100% 100%)' : shape.type === 'right_arrow' ? 'polygon(0% 20%, 60% 20%, 60% 0%, 100% 50%, 60% 100%, 60% 80%, 0% 80%)' : shape.type === 'hexagon' ? 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' : shape.type === 'star' ? 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' : 'none'
                   }}
                 >
+                  {shape.formatting.bullet && <span style={{ marginRight: '8px' }}>•</span>}
                   {shape.text}
                 </div>
               )}
@@ -238,27 +363,85 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         </div>
       </div>
 
+      {/* Notes Panel below canvas */}
+      {!isPresentMode && (
+        <div style={{ padding: '0 2rem 1rem', background: '#1e1e1e', borderTop: '1px solid #444', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ color: '#aaa', fontSize: '12px', marginBottom: '4px', marginTop: '8px' }}>Speaker Notes</div>
+          <textarea
+            style={{ width: '100%', height: '80px', background: '#2d2d2d', color: '#fff', border: '1px solid #555', padding: '8px', fontSize: '13px' }}
+            value={activeSlide.notes || ''}
+            onChange={(e) => onSlideNotesUpdate(activeSlideIdx, e.target.value)}
+            placeholder="Click to add notes"
+          />
+        </div>
+      )}
+
       {/* Slide Thumbnails Panel */}
       <div className={styles.thumbnailPanel}>
         <div className={styles.thumbnailLabel}>Slides</div>
         <div className={styles.thumbnails}>
           {slides.map((slide, idx) => (
-            <button
-              key={idx}
-              className={`${styles.thumbnail} ${activeSlideIdx === idx ? styles.activeThumbnail : ''}`}
-              onClick={() => {
-                setActiveSlideIdx(idx);
-                setEditingShape(null);
-              }}
-              title={`Slide ${slide.slideNumber}`}
-            >
-              <div className={styles.thumbnailContent}>
-                <span className={styles.slideNum}>{slide.slideNumber}</span>
+            <div key={idx} style={{ position: 'relative', opacity: slide.isHidden ? 0.5 : 1 }}>
+              <button
+                className={`${styles.thumbnail} ${activeSlideIdx === idx ? styles.activeThumbnail : ''}`}
+                onClick={() => {
+                  setActiveSlideIdx(idx);
+                  setEditingShape(null);
+                }}
+                title={`Slide ${slide.slideNumber}`}
+              >
+                <div className={styles.thumbnailContent}>
+                  <span className={styles.slideNum}>{slide.slideNumber}</span>
+                </div>
+              </button>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '4px', marginTop: '4px' }}>
+                <button title="Move Up" onClick={() => onSlideMove(idx, 'up')} style={{ background: '#444', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>↑</button>
+                <button title="Move Down" onClick={() => onSlideMove(idx, 'down')} style={{ background: '#444', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>↓</button>
+                <button title="Hide/Unhide" onClick={() => onSlideToggleVisibility(idx)} style={{ background: '#444', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>👁</button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
+
+      {/* Presentation Mode Overlay */}
+      {isPresentMode && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#000', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }} tabIndex={-1} onKeyDown={(e) => {
+          if (e.key === 'Escape') setIsPresentMode(false);
+          if (e.key === 'ArrowRight' || e.key === 'Space') handleNextSlide();
+          if (e.key === 'ArrowLeft') handlePrevSlide();
+        }} ref={(el) => el?.focus()}>
+          <div style={{ position: 'relative', width: '960px', height: '720px', background: '#fff', transform: 'scale(1.2)' }}>
+            {activeSlide.shapes.map((shape, shapeIdx) => (
+              <div key={shapeIdx} style={{
+                position: 'absolute', left: `${shape.x}px`, top: `${shape.y}px`, width: `${shape.width}px`, height: `${shape.height}px`,
+                background: shape.backgroundColor || 'transparent', border: shape.borderWidth && shape.type !== 'triangle' && shape.type !== 'right_arrow' && shape.type !== 'hexagon' && shape.type !== 'star' ? `${shape.borderWidth}px solid ${shape.borderColor || '#000'}` : 'none',
+                borderRadius: shape.type === 'ellipse' ? '50%' : (shape.type === 'round_rect' ? '12px' : '0'), display: 'flex', alignItems: 'center',
+                clipPath: shape.type === 'triangle' ? 'polygon(50% 0%, 0% 100%, 100% 100%)' : shape.type === 'right_arrow' ? 'polygon(0% 20%, 60% 20%, 60% 0%, 100% 50%, 60% 100%, 60% 80%, 0% 80%)' : shape.type === 'hexagon' ? 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' : shape.type === 'star' ? 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' : 'none',
+                justifyContent: shape.formatting.align === 'center' ? 'center' : shape.formatting.align === 'right' ? 'flex-end' : 'flex-start',
+                padding: '8px', color: shape.formatting.color || '#000',
+                fontWeight: shape.formatting.bold ? 'bold' : 'normal', fontStyle: shape.formatting.italic ? 'italic' : 'normal',
+                textDecoration: shape.formatting.underline ? 'underline' : 'none', fontSize: shape.formatting.fontSize ? `${shape.formatting.fontSize}pt` : 'inherit',
+                fontFamily: shape.formatting.fontName || 'Calibri, sans-serif'
+              }}>
+                {shape.type === 'image' && shape.imageUrl ? (
+                  <img src={shape.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <>
+                    {shape.formatting.bullet && <span style={{ marginRight: '8px' }}>•</span>}
+                    {shape.text}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'rgba(255,255,255,0.2)', padding: '10px', borderRadius: '8px', color: 'white', display: 'flex', gap: '10px' }}>
+            <button onClick={handlePrevSlide} style={{ cursor: 'pointer', background: 'none', border: 'none', color: 'white', fontSize: '20px' }}>◀</button>
+            <button onClick={handleNextSlide} style={{ cursor: 'pointer', background: 'none', border: 'none', color: 'white', fontSize: '20px' }}>▶</button>
+            <button onClick={() => setIsPresentMode(false)} style={{ cursor: 'pointer', background: 'none', border: 'none', color: 'white', fontSize: '20px', marginLeft: '10px' }}>✕</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

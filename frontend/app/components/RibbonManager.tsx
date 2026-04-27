@@ -105,8 +105,36 @@ export default function RibbonManager({
       ) : isPpt ? (
         <div className={styles.toolRow}>
           <div className={styles.group}>
-            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'prevSlide' })}>Prev Slide</button>
-            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'nextSlide' })}>Next Slide</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addSlide' })}>+ Slide</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'deleteSlide' })}>- Slide</button>
+          </div>
+          <div className={styles.group}>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addShape' })}>+ Text Box</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addRect' })}>+ Rectangle</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addEllipse' })}>+ Ellipse</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addTriangle' })}>+ Triangle</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addRightArrow' })}>+ Arrow</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'addStar' })}>+ Star</button>
+            <button className={styles.toolBtn} onClick={() => {
+              const url = window.prompt("Enter image URL:", "https://via.placeholder.com/300");
+              if (url) onPresentationAction({ type: 'addImage', value: url });
+            }}>+ Image</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'deleteShape' })}>- Delete Shape</button>
+          </div>
+          <div className={styles.group}>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'aiTranslate' })} style={{ background: '#8b5cf6', color: 'white', fontWeight: 'bold' }}>✨ AI Translate</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'togglePresentMode' })} style={{ background: '#2563eb', color: 'white', fontWeight: 'bold' }}>▶ Present</button>
+          </div>
+          <div className={styles.group}>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'bold' })}>B</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'italic' })}>I</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'underline' })}>U</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'bullet' })}>• List</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'align', value: 'left' })}>Left</button>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'align', value: 'center' })}>Center</button>
+          </div>
+          <div className={styles.group}>
+            <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'togglePresentMode' })} style={{ background: '#2563eb', color: 'white', fontWeight: 'bold' }}>▶ Present</button>
           </div>
           <div className={styles.group}>
             <button className={styles.toolBtn} onClick={() => onPresentationAction({ type: 'bold' })}>B</button>

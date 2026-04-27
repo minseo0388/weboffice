@@ -271,6 +271,142 @@ export default function EditorInner() {
     [updateDocModel]
   );
 
+  const handleSlideAdd = useCallback(
+    (afterIdx: number) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const newSlide = {
+          slideNumber: prev.slides.length + 1,
+          shapes: []
+        };
+        const updatedSlides = [...prev.slides];
+        updatedSlides.splice(afterIdx + 1, 0, newSlide);
+        updatedSlides.forEach((s, idx) => { s.slideNumber = idx + 1; });
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleSlideDelete = useCallback(
+    (slideIdx: number) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        if (prev.slides.length <= 1) {
+          alert('마지막 슬라이드는 삭제할 수 없습니다.');
+          return prev;
+        }
+        const updatedSlides = [...prev.slides];
+        updatedSlides.splice(slideIdx, 1);
+        updatedSlides.forEach((s, idx) => { s.slideNumber = idx + 1; });
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleShapeAdd = useCallback(
+    (slideIdx: number, type: string = 'text', imageUrl?: string) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = [...prev.slides];
+        const newShape = {
+          type,
+          text: type === 'text' ? '새 텍스트 상자' : (type === 'image' ? '' : '새 도형'),
+          x: 100, y: 100, width: type === 'text' ? 300 : 150, height: type === 'text' ? 50 : 150,
+          formatting: { bold: false, italic: false, underline: false, fontSize: 18, fontName: 'Calibri', color: '#000000', align: 'center' as const },
+          backgroundColor: type !== 'text' && type !== 'image' ? '#e2e8f0' : undefined,
+          borderColor: type !== 'text' && type !== 'image' ? '#64748b' : undefined,
+          borderWidth: type !== 'text' && type !== 'image' ? 2 : undefined,
+          imageUrl: type === 'image' ? imageUrl : undefined
+        };
+        updatedSlides[slideIdx] = {
+          ...updatedSlides[slideIdx],
+          shapes: [...updatedSlides[slideIdx].shapes, newShape]
+        };
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleShapeDelete = useCallback(
+    (slideIdx: number, shapeIdx: number) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = [...prev.slides];
+        const shapes = [...updatedSlides[slideIdx].shapes];
+        shapes.splice(shapeIdx, 1);
+        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], shapes };
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleSlideMove = useCallback(
+    (slideIdx: number, direction: 'up' | 'down') => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = [...prev.slides];
+        if (direction === 'up' && slideIdx > 0) {
+          const temp = updatedSlides[slideIdx];
+          updatedSlides[slideIdx] = updatedSlides[slideIdx - 1];
+          updatedSlides[slideIdx - 1] = temp;
+        } else if (direction === 'down' && slideIdx < updatedSlides.length - 1) {
+          const temp = updatedSlides[slideIdx];
+          updatedSlides[slideIdx] = updatedSlides[slideIdx + 1];
+          updatedSlides[slideIdx + 1] = temp;
+        }
+        updatedSlides.forEach((s, idx) => { s.slideNumber = idx + 1; });
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleSlideToggleVisibility = useCallback(
+    (slideIdx: number) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = [...prev.slides];
+        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], isHidden: !updatedSlides[slideIdx].isHidden };
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleSlideNotesUpdate = useCallback(
+    (slideIdx: number, notes: string) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = [...prev.slides];
+        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], notes };
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleAITranslate = useCallback(
+    (slideIdx: number) => {
+      alert("✨ AI 분석 완료: 슬라이드 내 모든 텍스트를 대상 언어(Mock)로 번역합니다.");
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = [...prev.slides];
+        const shapes = updatedSlides[slideIdx].shapes.map(shape => {
+          if (!shape.text || shape.type === 'image') return shape;
+          // Mock translation: Reverse the string or append (Translated)
+          return { ...shape, text: shape.text + " (Translated)" };
+        });
+        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], shapes };
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
   const handleTextRibbonAction = useCallback((action: Parameters<DocumentCanvasHandle['applyAction']>[0]) => {
     textCanvasRef.current?.applyAction(action);
   }, []);
@@ -419,6 +555,14 @@ export default function EditorInner() {
             slides={docModel.slides}
             onTextChange={handleSlideTextChange}
             onShapeFormatChange={handleSlideShapeFormatChange}
+            onSlideAdd={handleSlideAdd}
+            onSlideDelete={handleSlideDelete}
+            onShapeAdd={handleShapeAdd}
+            onShapeDelete={handleShapeDelete}
+            onSlideMove={handleSlideMove}
+            onSlideToggleVisibility={handleSlideToggleVisibility}
+            onSlideNotesUpdate={handleSlideNotesUpdate}
+            onAITranslate={handleAITranslate}
           />
         ) : isTextDocument(docModel) ? (
           <DocumentCanvas

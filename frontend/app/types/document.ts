@@ -84,21 +84,29 @@ export interface SlideShapeFormatting {
   fontSize?: number;
   fontName?: string;
   color?: string;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  bullet?: boolean;
 }
 
 export interface SlideShape {
-  type: string;
+  type: string; // 'text', 'rect', 'ellipse', 'image', 'triangle', 'right_arrow', 'hexagon', 'star', 'round_rect'
   text: string;
   x: number;
   y: number;
   width: number;
   height: number;
   formatting: SlideShapeFormatting;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  imageUrl?: string; // For image shapes (Base64 or URL)
 }
 
 export interface PresentationSlide {
   slideNumber: number;
   shapes: SlideShape[];
+  notes?: string;
+  isHidden?: boolean;
 }
 
 export interface PresentationDocumentModel extends BaseDocumentModel {
@@ -137,7 +145,27 @@ export type PresentationToolAction =
   | { type: 'fontName'; value: string }
   | { type: 'textColor'; value: string }
   | { type: 'nextSlide' }
-  | { type: 'prevSlide' };
+  | { type: 'prevSlide' }
+  | { type: 'addSlide' }
+  | { type: 'deleteSlide' }
+  | { type: 'addShape' }
+  | { type: 'deleteShape' }
+  | { type: 'align'; value: 'left' | 'center' | 'right' | 'justify' }
+  | { type: 'bullet' }
+  | { type: 'addRect' }
+  | { type: 'addEllipse' }
+  | { type: 'addImage'; value: string }
+  | { type: 'addTriangle' }
+  | { type: 'addRightArrow' }
+  | { type: 'addHexagon' }
+  | { type: 'addStar' }
+  | { type: 'addRoundRect' }
+  | { type: 'moveSlideUp' }
+  | { type: 'moveSlideDown' }
+  | { type: 'toggleSlideVisibility' }
+  | { type: 'togglePresentMode' }
+  | { type: 'updateNotes'; value: string }
+  | { type: 'aiTranslate' };
 
 export function isSpreadsheetDocument(model: DocumentModel | null): model is SpreadsheetDocumentModel {
   if (!model) return false;
