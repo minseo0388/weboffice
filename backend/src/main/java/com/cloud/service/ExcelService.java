@@ -137,7 +137,7 @@ public class ExcelService {
             }
             case FORMULA -> {
                 type = "formula";
-                value = cell.getCellFormula();
+                value = "=" + cell.getCellFormula();
             }
             default -> {
                 type = "empty";
@@ -232,7 +232,11 @@ public class ExcelService {
         }
 
         if ("formula".equals(type)) {
-            cell.setCellFormula(String.valueOf(value == null ? "" : value));
+            String formulaValue = String.valueOf(value == null ? "" : value);
+            if (formulaValue.startsWith("=")) {
+                formulaValue = formulaValue.substring(1);
+            }
+            cell.setCellFormula(formulaValue);
             return;
         }
 

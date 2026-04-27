@@ -3,6 +3,7 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import styles from './SpreadsheetGrid.module.css';
 import { SpreadsheetCell, SpreadsheetSheet, SpreadsheetToolAction } from '../types/document';
+import { evaluateFormula } from '../../utils/excelFunctions';
 
 interface SpreadsheetGridProps {
   sheets: SpreadsheetSheet[];
@@ -55,8 +56,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const handleCellSave = useCallback(() => {
     if (editCell) {
       const currentCell = activeSheet.grid[editCell.row]?.[editCell.col];
+      const isFormula = editValue.startsWith('=');
       const updatedCell: SpreadsheetCell = {
         ...(currentCell || { row: editCell.row, col: editCell.col, type: 'string', value: '' }),
+        type: isFormula ? 'formula' : (isNaN(Number(editValue)) || editValue.trim() === '' ? 'string' : 'number'),
         value: editValue,
       };
       onCellChange(activeSheetIdx, editCell.row, editCell.col, updatedCell);
@@ -246,7 +249,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                           autoFocus
                         />
                       ) : (
-                        <span>{cell.value}</span>
+                        <span>{String(cell.value).startsWith('=') ? String(evaluateFormula(String(cell.value), activeSheet.grid)) : cell.value}</span>
                       )}
                     </td>
                   );
