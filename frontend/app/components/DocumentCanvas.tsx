@@ -210,6 +210,41 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
           ...para,
           fontSize: action.value,
         }));
+        return;
+      }
+
+      if (action.type === 'highlightColor') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          highlightColor: action.value,
+        }));
+        return;
+      }
+
+      if (action.type === 'indent') {
+        updateSelectedParagraph((para) => {
+          const currentIndent = para.indent || 0;
+          return {
+            ...para,
+            indent: action.value === 'increase' ? currentIndent + 1 : Math.max(0, currentIndent - 1),
+          };
+        });
+        return;
+      }
+
+      if (action.type === 'list') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          listType: action.value,
+        }));
+        return;
+      }
+
+      if (action.type === 'lineSpacing') {
+        updateSelectedParagraph((para) => ({
+          ...para,
+          lineSpacing: action.value,
+        }));
       }
     },
   }), [editState, updateSelectedParagraph]);
@@ -265,11 +300,19 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                           fontFamily: para.fontName || fontName || 'NanumGothic',
                           fontSize: `${para.fontSize || fontSize || 14}pt`,
                           color: para.textColor || '#111827',
+                          backgroundColor: para.highlightColor || 'transparent',
                           fontWeight: para.bold ? 'bold' : 'normal',
                           fontStyle: para.italic ? 'italic' : 'normal',
                           textDecoration: para.underline ? 'underline' : 'none',
+                          lineHeight: para.lineSpacing || 1.5,
+                          marginLeft: `${(para.indent || 0) * 2}rem`,
+                          display: 'flex',
+                          alignItems: 'flex-start',
                         }}
                       >
+                        {para.listType === 'bullet' && <span style={{ marginRight: '8px' }}>•</span>}
+                        {para.listType === 'number' && <span style={{ marginRight: '8px' }}>{paraIdx + 1}.</span>}
+                        <div style={{ flex: 1 }}>
                         {isEditing ? (
                           <input
                             ref={textInputRef}
@@ -290,6 +333,7 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                             {para.text || '(empty)'}
                           </span>
                         )}
+                        </div>
                       </div>
                     );
                   })}

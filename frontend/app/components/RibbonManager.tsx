@@ -168,11 +168,27 @@ export default function RibbonManager({
             <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'italic' })}>I</button>
             <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'underline' })}>U</button>
             <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'textColor', value: '#b91c1c' })}>Color</button>
+            <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'highlightColor', value: '#fef08a' })}>Highlight</button>
           </div>
           <div className={styles.group}>
             <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'align', value: 'left' })}>Left</button>
             <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'align', value: 'center' })}>Center</button>
             <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'align', value: 'right' })}>Right</button>
+            <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'align', value: 'justify' })}>Justify</button>
+          </div>
+          <div className={styles.group}>
+            <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'list', value: 'bullet' })}>• Bullet</button>
+            <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'list', value: 'number' })}>1. Number</button>
+            <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'indent', value: 'increase' })}>→ Indent</button>
+            <button className={styles.toolBtn} onClick={() => onTextAction({ type: 'indent', value: 'decrease' })}>← Outdent</button>
+          </div>
+          <div className={styles.group}>
+            <select className={styles.select} onChange={(e) => onTextAction({ type: 'lineSpacing', value: Number(e.target.value) })}>
+              <option value="1.0">1.0 Spacing</option>
+              <option value="1.15">1.15 Spacing</option>
+              <option value="1.5">1.5 Spacing</option>
+              <option value="2.0">2.0 Spacing</option>
+            </select>
           </div>
           <div className={styles.group}>
             <button className={styles.toolBtn}>Table</button>

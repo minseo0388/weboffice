@@ -70,6 +70,10 @@ public class WordService {
         String fontName = "Calibri";
         int fontSize = 11;
         String align = "left";
+        String highlightColor = "transparent";
+        int indent = 0;
+        String listType = "none";
+        double lineSpacing = 1.0;
 
         // Extract text and first run's formatting
         int runCount = 0;
@@ -100,16 +104,43 @@ public class WordService {
                 paraAlign.equals("right") ? "right" : 
                 paraAlign.equals("both") ? "justify" : "left";
 
-        return Map.of(
-                "paragraphIndex", paragraphIndex,
-                "text", text.toString(),
-                "fontName", fontName,
-                "fontSize", fontSize,
-                "bold", bold,
-                "italic", italic,
-                "underline", underline,
-                "align", align
-        );
+        // Get highlight color from run if available
+        for (XWPFRun run : para.getRuns()) {
+            if (run.getTextHighlightColor() != null) {
+                highlightColor = run.getTextHighlightColor().toString();
+                break;
+            }
+        }
+
+        // Get indentation and lists
+        if (para.getIndentationLeft() > 0) {
+            indent = para.getIndentationLeft() / 720; // 720 twips = 0.5 inch ~ 1 indent level
+        }
+        if (para.getNumID() != null) {
+            listType = "bullet"; // Simple fallback: POI makes it hard to distinguish bullet vs number
+        }
+        
+        // Line spacing
+        if (para.getSpacingBetween() >= 0) {
+            lineSpacing = para.getSpacingBetween() / 240.0; // 240 twips = 1 line
+            if (lineSpacing == 0) lineSpacing = 1.0;
+        }
+
+        Map<String, Object> paraMap = new LinkedHashMap<>();
+        paraMap.put("paragraphIndex", paragraphIndex);
+        paraMap.put("text", text.toString());
+        paraMap.put("fontName", fontName);
+        paraMap.put("fontSize", fontSize);
+        paraMap.put("bold", bold);
+        paraMap.put("italic", italic);
+        paraMap.put("underline", underline);
+        paraMap.put("align", align);
+        paraMap.put("highlightColor", highlightColor);
+        paraMap.put("indent", indent);
+        paraMap.put("listType", listType);
+        paraMap.put("lineSpacing", lineSpacing);
+        
+        return paraMap;
     }
 
     private List<Map<String, Object>> extractDocxTables(List<XWPFTable> tables) {
@@ -247,7 +278,7 @@ public class WordService {
                         if (newText == null) {
                             continue;
                         }
-                        replaceParagraphTextPreserveStyle(doc.getParagraphs().get(paragraphIndex), newText);
+                        replaceParagraphTextPreserveStyle(doc.getParagraphs().get(paragraphIndex), newText, paragraphData);
                     }
                 }
 
@@ -302,20 +333,39 @@ public class WordService {
         }
     }
 
-    private void replaceParagraphTextPreserveStyle(XWPFParagraph paragraph, String newText) {
+    private void replaceParagraphTextPreserveStyle(XWPFParagraph paragraph, String newText, Map<String, Object> paragraphData) {
         List<XWPFRun> runs = paragraph.getRuns();
+        XWPFRun targetRun;
+        
         if (runs == null || runs.isEmpty()) {
-            XWPFRun run = paragraph.createRun();
-            run.setText(newText);
-            return;
+            targetRun = paragraph.createRun();
+        } else {
+            targetRun = runs.get(0);
+            for (int i = runs.size() - 1; i > 0; i--) {
+                paragraph.removeRun(i);
+            }
         }
 
-        XWPFRun firstRun = runs.get(0);
-        firstRun.setText("", 0);
-        firstRun.setText(newText, 0);
+        targetRun.setText("", 0);
+        targetRun.setText(newText, 0);
 
-        for (int i = runs.size() - 1; i > 0; i--) {
-            paragraph.removeRun(i);
+        // Apply new styles
+        if (paragraphData != null) {
+            if (paragraphData.containsKey("align")) {
+                String align = (String) paragraphData.get("align");
+                if ("center".equals(align)) paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.CENTER);
+                else if ("right".equals(align)) paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.RIGHT);
+                else if ("justify".equals(align)) paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.BOTH);
+                else paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.LEFT);
+            }
+            if (paragraphData.containsKey("indent")) {
+                int indent = ((Number) paragraphData.get("indent")).intValue();
+                paragraph.setIndentationLeft(indent * 720);
+            }
+            if (paragraphData.containsKey("lineSpacing")) {
+                double spacing = ((Number) paragraphData.get("lineSpacing")).doubleValue();
+                paragraph.setSpacingBetween(spacing * 240);
+            }
         }
     }
 

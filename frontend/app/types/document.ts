@@ -18,6 +18,10 @@ export interface Paragraph {
   underline?: boolean;
   textColor?: string;
   align?: 'left' | 'center' | 'right' | 'justify';
+  highlightColor?: string;
+  indent?: number; // indent level (0, 1, 2...)
+  listType?: 'bullet' | 'number' | 'none';
+  lineSpacing?: number; // e.g. 1.0, 1.15, 1.5, 2.0
 }
 
 export interface Section {
@@ -124,7 +128,11 @@ export type TextToolAction =
   | { type: 'textColor'; value: string }
   | { type: 'fontName'; value: string }
   | { type: 'fontSize'; value: number }
-  | { type: 'align'; value: 'left' | 'center' | 'right' | 'justify' };
+  | { type: 'align'; value: 'left' | 'center' | 'right' | 'justify' }
+  | { type: 'highlightColor'; value: string }
+  | { type: 'indent'; value: 'increase' | 'decrease' }
+  | { type: 'list'; value: 'bullet' | 'number' | 'none' }
+  | { type: 'lineSpacing'; value: number };
 
 export type SpreadsheetToolAction =
   | { type: 'bold' }
