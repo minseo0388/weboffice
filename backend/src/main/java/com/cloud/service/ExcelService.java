@@ -87,13 +87,17 @@ public class ExcelService {
         }
 
         // 동결창
+        int frozenRows = 0;
+        int frozenCols = 0;
         Map<String, Object> freezePane = new LinkedHashMap<>();
         org.apache.poi.xssf.usermodel.XSSFSheet xSheet = sheet instanceof org.apache.poi.xssf.usermodel.XSSFSheet xs ? xs : null;
         if (xSheet != null && xSheet.getPaneInformation() != null) {
             org.apache.poi.ss.util.PaneInformation pi = xSheet.getPaneInformation();
             if (pi.isFreezePane()) {
-                freezePane.put("col", pi.getVerticalSplitLeftColumn());
-                freezePane.put("row", pi.getHorizontalSplitTopRow());
+                frozenCols = pi.getVerticalSplitLeftColumn();
+                frozenRows = pi.getHorizontalSplitTopRow();
+                freezePane.put("col", frozenCols);
+                freezePane.put("row", frozenRows);
             }
         }
 
@@ -121,9 +125,37 @@ public class ExcelService {
         result.put("colWidths",   colWidths);
         result.put("rowHeights",  rowHeights);
         result.put("merges",      merges);
+        result.put("frozenRows",  frozenRows);
+        result.put("frozenCols",  frozenCols);
         result.put("freezePane",  freezePane);
         result.put("tabColor",    tabColor);
         result.put("autoFilter",  autoFilter);
+
+        // Also mark merged cells at cell-level (future UI). This does not affect save;
+        // merges are still preserved via the merges list.
+        for (CellRangeAddress cra : sheet.getMergedRegions()) {
+            int fr = cra.getFirstRow();
+            int lr = cra.getLastRow();
+            int fc = cra.getFirstColumn();
+            int lc = cra.getLastColumn();
+            int rowSpan = (lr - fr) + 1;
+            int colSpan = (lc - fc) + 1;
+            if (fr >= 0 && fr < grid.size() && fc >= 0 && !grid.get(fr).isEmpty() && fc < grid.get(fr).size()) {
+                Map<String, Object> tl = grid.get(fr).get(fc);
+                tl.put("merged", true);
+                tl.put("rowSpan", rowSpan);
+                tl.put("colSpan", colSpan);
+            }
+            for (int r = fr; r <= lr && r < grid.size(); r++) {
+                if (r < 0) continue;
+                List<Map<String, Object>> rowData = grid.get(r);
+                for (int c = fc; c <= lc && c < rowData.size(); c++) {
+                    if (c < 0) continue;
+                    if (r == fr && c == fc) continue;
+                    rowData.get(c).put("merged", true);
+                }
+            }
+        }
         return result;
     }
 
@@ -145,50 +177,56 @@ public class ExcelService {
             case FORMULA -> { m.put("type","formula"); m.put("value", "=" + cell.getCellFormula()); }
             default      -> { m.put("type","empty");   m.put("value", fmt.formatCellValue(cell)); }
         }
-        m.put("display", fmt.formatCellValue(cell));
+        m.put("displayValue", fmt.formatCellValue(cell));
 
         // 서식
         CellStyle cs = cell.getCellStyle();
         if (cs != null) {
             Font font = wb.getFontAt(cs.getFontIndex());
-            Map<String, Object> style = new LinkedHashMap<>();
-            style.put("bold",      font.getBold());
-            style.put("italic",    font.getItalic());
-            style.put("underline", font.getUnderline() != Font.U_NONE);
-            style.put("strike",    font.getStrikeout());
-            style.put("fontSize",  font.getFontHeightInPoints());
-            style.put("fontName",  font.getFontName());
+            m.put("bold",      font.getBold());
+            m.put("italic",    font.getItalic());
+            m.put("underline", font.getUnderline() != Font.U_NONE);
+            m.put("fontSize",  font.getFontHeightInPoints());
+            m.put("fontName",  font.getFontName());
 
             // 폰트 색상
             if (font instanceof XSSFFont xf) {
                 XSSFColor fc = xf.getXSSFColor();
-                if (fc != null && fc.getARGBHex() != null)
-                    style.put("color", "#" + fc.getARGBHex().substring(2));
+                if (fc != null && fc.getARGBHex() != null) {
+                    m.put("textColor", "#" + fc.getARGBHex().substring(2));
+                }
             }
 
             // 배경색
             if (cs instanceof XSSFCellStyle xcs) {
                 XSSFColor bg = xcs.getFillForegroundXSSFColor();
-                if (bg != null && bg.getARGBHex() != null)
-                    style.put("bgColor", "#" + bg.getARGBHex().substring(2));
+                if (bg != null && bg.getARGBHex() != null) {
+                    m.put("backgroundColor", "#" + bg.getARGBHex().substring(2));
+                }
             }
 
-            // 테두리
-            style.put("borderTop",    cs.getBorderTop().getCode());
-            style.put("borderBottom", cs.getBorderBottom().getCode());
-            style.put("borderLeft",   cs.getBorderLeft().getCode());
-            style.put("borderRight",  cs.getBorderRight().getCode());
-
             // 정렬
-            style.put("hAlign", cs.getAlignment().name().toLowerCase());
-            style.put("vAlign", cs.getVerticalAlignment().name().toLowerCase());
+            String align = switch (cs.getAlignment()) {
+                case CENTER, CENTER_SELECTION -> "center";
+                case RIGHT, FILL, JUSTIFY, GENERAL, DISTRIBUTED -> "right";
+                default -> "left";
+            };
+            m.put("align", align);
 
             // 숫자 포맷
-            style.put("numFormat", cs.getDataFormatString());
+            m.put("numberFormat", cs.getDataFormatString());
 
             // 줄바꿈
-            style.put("wrapText", cs.getWrapText());
-            m.put("style", style);
+            m.put("wrapText", cs.getWrapText());
+
+            // Preserve extra style details for future parity work.
+            Map<String, Object> extended = new LinkedHashMap<>();
+            extended.put("borderTop", cs.getBorderTop().getCode());
+            extended.put("borderBottom", cs.getBorderBottom().getCode());
+            extended.put("borderLeft", cs.getBorderLeft().getCode());
+            extended.put("borderRight", cs.getBorderRight().getCode());
+            extended.put("vAlign", cs.getVerticalAlignment().name().toLowerCase());
+            m.put("extended", extended);
         }
 
         // 주석
@@ -214,6 +252,10 @@ public class ExcelService {
             List<Map<String, Object>> sheets = (List<Map<String, Object>>) model.get("sheets");
             if (sheets == null) return toBytes(wb);
 
+            // Cache styles/fonts to avoid style explosion in large sheets.
+            Map<String, CellStyle> styleCache = new HashMap<>();
+            Map<String, Font> fontCache = new HashMap<>();
+
             for (Map<String, Object> sd : sheets) {
                 int si = sd.get("sheetIndex") instanceof Number n ? n.intValue() : -1;
                 if (si < 0 || si >= wb.getNumberOfSheets()) continue;
@@ -235,7 +277,7 @@ public class ExcelService {
                             if (cd == null) continue;
                             Cell cell = row.getCell(c, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
                             setCellValue(cell, cd);
-                            applyCellStyle(cell, cd, wb);
+                            applyCellStyle(cell, cd, wb, styleCache, fontCache);
                         }
                     }
                 }
@@ -274,9 +316,15 @@ public class ExcelService {
                 }
 
                 // 동결창
-                Map<String, Object> fp = (Map<String, Object>) sd.get("freezePane");
-                if (fp != null && fp.get("col") instanceof Number fc && fp.get("row") instanceof Number fr) {
-                    sheet.createFreezePane(fc.intValue(), fr.intValue());
+                int frzRows = sd.get("frozenRows") instanceof Number n ? n.intValue() : 0;
+                int frzCols = sd.get("frozenCols") instanceof Number n ? n.intValue() : 0;
+                if (frzRows > 0 || frzCols > 0) {
+                    sheet.createFreezePane(frzCols, frzRows);
+                } else {
+                    Map<String, Object> fp = (Map<String, Object>) sd.get("freezePane");
+                    if (fp != null && fp.get("col") instanceof Number fc && fp.get("row") instanceof Number fr) {
+                        sheet.createFreezePane(fc.intValue(), fr.intValue());
+                    }
                 }
 
                 // AutoFilter
@@ -305,53 +353,207 @@ public class ExcelService {
     }
 
     @SuppressWarnings("unchecked")
-    private void applyCellStyle(Cell cell, Map<String, Object> cd, Workbook wb) {
-        Map<String, Object> style = (Map<String, Object>) cd.get("style");
-        if (style == null) return;
+    private void applyCellStyle(
+            Cell cell,
+            Map<String, Object> cd,
+            Workbook wb,
+            Map<String, CellStyle> styleCache,
+            Map<String, Font> fontCache
+    ) {
+        Map<String, Object> legacyStyle = (Map<String, Object>) cd.get("style");
 
-        CellStyle cs = wb.createCellStyle();
-        cs.cloneStyleFrom(cell.getCellStyle());
+        boolean hasAnyStyleInput = legacyStyle != null
+                || cd.containsKey("bold")
+                || cd.containsKey("italic")
+                || cd.containsKey("underline")
+                || cd.containsKey("fontSize")
+                || cd.containsKey("fontName")
+                || cd.containsKey("textColor")
+                || cd.containsKey("backgroundColor")
+                || cd.containsKey("numberFormat")
+                || cd.containsKey("align")
+                || cd.containsKey("wrapText");
+        if (!hasAnyStyleInput) return;
 
-        Font font = wb.createFont();
-        font.setBold(Boolean.TRUE.equals(style.get("bold")));
-        font.setItalic(Boolean.TRUE.equals(style.get("italic")));
-        font.setUnderline(Boolean.TRUE.equals(style.get("underline")) ? Font.U_SINGLE : Font.U_NONE);
-        font.setStrikeout(Boolean.TRUE.equals(style.get("strike")));
-        if (style.get("fontSize") instanceof Number fs) font.setFontHeightInPoints(fs.shortValue());
-        if (style.get("fontName") instanceof String fn && !fn.isBlank()) font.setFontName(fn);
-        if (style.get("color") instanceof String c && c.startsWith("#") && font instanceof XSSFFont xf) {
-            xf.setColor(new XSSFColor(parseHex(c), null));
+        Boolean bold = readBool(cd, legacyStyle, "bold");
+        Boolean italic = readBool(cd, legacyStyle, "italic");
+        Boolean underline = readBool(cd, legacyStyle, "underline");
+        Number fontSize = readNumber(cd, legacyStyle, "fontSize");
+        String fontName = readString(cd, legacyStyle, "fontName");
+        String textColor = readStringAlt(cd, legacyStyle, "textColor", "color");
+        String bgColor = readStringAlt(cd, legacyStyle, "backgroundColor", "bgColor");
+        String numberFormat = readStringAlt(cd, legacyStyle, "numberFormat", "numFormat");
+        String hAlign = readStringAlt(cd, legacyStyle, "align", "hAlign");
+        Boolean wrapText = readBool(cd, legacyStyle, "wrapText");
+
+        CellStyle baseStyle = cell.getCellStyle();
+        Font baseFont = wb.getFontAt(baseStyle.getFontIndex());
+
+        boolean needsChange = false;
+        if (bold != null && bold != baseFont.getBold()) needsChange = true;
+        if (italic != null && italic != baseFont.getItalic()) needsChange = true;
+        if (underline != null && underline != (baseFont.getUnderline() != Font.U_NONE)) needsChange = true;
+        if (fontSize != null && fontSize.shortValue() != baseFont.getFontHeightInPoints()) needsChange = true;
+        if (fontName != null && !fontName.isBlank() && !fontName.equals(baseFont.getFontName())) needsChange = true;
+
+        if (wrapText != null && wrapText != baseStyle.getWrapText()) needsChange = true;
+        if (numberFormat != null && !numberFormat.isBlank()) {
+            String current = baseStyle.getDataFormatString();
+            if (!numberFormat.equals(current)) needsChange = true;
         }
-        cs.setFont(font);
-
-        // 배경
-        if (style.get("bgColor") instanceof String bg && !bg.isBlank() && cs instanceof XSSFCellStyle xcs) {
-            xcs.setFillForegroundColor(new XSSFColor(parseHex(bg), null));
-            xcs.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        if (hAlign != null && !hAlign.isBlank()) {
+            String current = baseStyle.getAlignment().name().toLowerCase(Locale.ROOT);
+            if (!hAlign.equalsIgnoreCase(current)) needsChange = true;
         }
 
-        // 테두리
-        if (style.get("borderTop")    instanceof Number bt) cs.setBorderTop(BorderStyle.valueOf((short) bt.intValue()));
-        if (style.get("borderBottom") instanceof Number bb) cs.setBorderBottom(BorderStyle.valueOf((short) bb.intValue()));
-        if (style.get("borderLeft")   instanceof Number bl) cs.setBorderLeft(BorderStyle.valueOf((short) bl.intValue()));
-        if (style.get("borderRight")  instanceof Number br) cs.setBorderRight(BorderStyle.valueOf((short) br.intValue()));
-
-        // 정렬
-        if (style.get("hAlign") instanceof String ha) {
-            try { cs.setAlignment(HorizontalAlignment.valueOf(ha.toUpperCase())); } catch (Exception ignored) {}
+        if (!needsChange && (textColor != null || bgColor != null)) {
+            // Colors are only supported for XSSF in this implementation.
+            needsChange = true;
         }
-        if (style.get("vAlign") instanceof String va) {
-            try { cs.setVerticalAlignment(VerticalAlignment.valueOf(va.toUpperCase())); } catch (Exception ignored) {}
+        if (!needsChange) return;
+
+        String styleKey = baseStyle.getIndex()
+                + "|" + String.valueOf(bold)
+                + "|" + String.valueOf(italic)
+                + "|" + String.valueOf(underline)
+                + "|" + String.valueOf(fontSize)
+                + "|" + String.valueOf(fontName)
+                + "|" + String.valueOf(textColor)
+                + "|" + String.valueOf(bgColor)
+                + "|" + String.valueOf(numberFormat)
+                + "|" + String.valueOf(hAlign)
+                + "|" + String.valueOf(wrapText);
+
+        CellStyle cached = styleCache.get(styleKey);
+        if (cached != null) {
+            cell.setCellStyle(cached);
+            return;
         }
 
-        // 숫자 포맷
-        if (style.get("numFormat") instanceof String nf && !nf.isBlank()) {
-            cs.setDataFormat(wb.createDataFormat().getFormat(nf));
+        CellStyle nextStyle = wb.createCellStyle();
+        nextStyle.cloneStyleFrom(baseStyle);
+
+        // Font
+        Font nextFont = baseFont;
+        boolean fontChanged = (bold != null) || (italic != null) || (underline != null)
+                || (fontSize != null) || (fontName != null && !fontName.isBlank())
+                || (textColor != null && !textColor.isBlank());
+
+        if (fontChanged) {
+            String fontKey = baseFont.getIndex()
+                    + "|" + String.valueOf(bold)
+                    + "|" + String.valueOf(italic)
+                    + "|" + String.valueOf(underline)
+                    + "|" + String.valueOf(fontSize)
+                    + "|" + String.valueOf(fontName)
+                    + "|" + String.valueOf(textColor);
+
+            Font cachedFont = fontCache.get(fontKey);
+            if (cachedFont == null) {
+                Font f = wb.createFont();
+                copyFont(baseFont, f);
+                if (bold != null) f.setBold(bold);
+                if (italic != null) f.setItalic(italic);
+                if (underline != null) f.setUnderline(underline ? Font.U_SINGLE : Font.U_NONE);
+                if (fontSize != null) f.setFontHeightInPoints(fontSize.shortValue());
+                if (fontName != null && !fontName.isBlank()) f.setFontName(fontName);
+                if (textColor != null && textColor.startsWith("#") && f instanceof XSSFFont xf) {
+                    xf.setColor(new XSSFColor(parseHex(textColor), null));
+                }
+                cachedFont = f;
+                fontCache.put(fontKey, cachedFont);
+            }
+            nextFont = cachedFont;
+        }
+        nextStyle.setFont(nextFont);
+
+        // Background (XSSF only)
+        if (bgColor != null && !bgColor.isBlank() && nextStyle instanceof XSSFCellStyle xcs) {
+            try {
+                xcs.setFillForegroundColor(new XSSFColor(parseHex(bgColor), null));
+                xcs.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            } catch (Exception ignored) {}
         }
 
-        if (style.get("wrapText") instanceof Boolean wrap) cs.setWrapText(wrap);
+        // Alignment
+        if (hAlign != null && !hAlign.isBlank()) {
+            try {
+                nextStyle.setAlignment(HorizontalAlignment.valueOf(hAlign.toUpperCase(Locale.ROOT)));
+            } catch (Exception ignored) {
+                // Accept legacy string values like "left"/"center"/"right"
+                if ("center".equalsIgnoreCase(hAlign)) nextStyle.setAlignment(HorizontalAlignment.CENTER);
+                else if ("right".equalsIgnoreCase(hAlign)) nextStyle.setAlignment(HorizontalAlignment.RIGHT);
+                else nextStyle.setAlignment(HorizontalAlignment.LEFT);
+            }
+        }
 
-        cell.setCellStyle(cs);
+        // Number format
+        if (numberFormat != null && !numberFormat.isBlank()) {
+            try {
+                nextStyle.setDataFormat(wb.createDataFormat().getFormat(numberFormat));
+            } catch (Exception ignored) {}
+        }
+
+        if (wrapText != null) nextStyle.setWrapText(wrapText);
+
+        styleCache.put(styleKey, nextStyle);
+        cell.setCellStyle(nextStyle);
+    }
+
+    private Boolean readBool(Map<String, Object> cd, Map<String, Object> legacy, String key) {
+        Object v = cd.get(key);
+        if (v instanceof Boolean b) return b;
+        if (legacy != null) {
+            Object lv = legacy.get(key);
+            if (lv instanceof Boolean b) return b;
+        }
+        return null;
+    }
+
+    private Number readNumber(Map<String, Object> cd, Map<String, Object> legacy, String key) {
+        Object v = cd.get(key);
+        if (v instanceof Number n) return n;
+        if (legacy != null) {
+            Object lv = legacy.get(key);
+            if (lv instanceof Number n) return n;
+        }
+        return null;
+    }
+
+    private String readString(Map<String, Object> cd, Map<String, Object> legacy, String key) {
+        Object v = cd.get(key);
+        if (v instanceof String s) return s;
+        if (legacy != null) {
+            Object lv = legacy.get(key);
+            if (lv instanceof String s) return s;
+        }
+        return null;
+    }
+
+    private String readStringAlt(Map<String, Object> cd, Map<String, Object> legacy, String key, String legacyKey) {
+        String v = readString(cd, legacy, key);
+        if (v != null) return v;
+        if (legacy != null) {
+            Object lv = legacy.get(legacyKey);
+            if (lv instanceof String s) return s;
+        }
+        return null;
+    }
+
+    private void copyFont(Font from, Font to) {
+        try {
+            to.setBold(from.getBold());
+            to.setItalic(from.getItalic());
+            to.setStrikeout(from.getStrikeout());
+            to.setUnderline(from.getUnderline());
+            to.setFontHeightInPoints(from.getFontHeightInPoints());
+            to.setFontName(from.getFontName());
+            to.setCharSet(from.getCharSet());
+            to.setColor(from.getColor());
+            to.setTypeOffset(from.getTypeOffset());
+        } catch (Exception ignored) {
+            // Best effort; different Font implementations vary.
+        }
     }
 
     private byte[] toBytes(Workbook wb) throws Exception {

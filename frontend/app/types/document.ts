@@ -30,6 +30,8 @@ export interface Paragraph {
   paragraphSpacingBefore?: number; // 문단 위 간격 (px)
   paragraphSpacingAfter?: number;  // 문단 아래 간격 (px)
   pageBreak?: boolean;
+  /** Format-specific passthrough bucket (backend should preserve unknowns) */
+  extended?: Record<string, unknown>;
 }
 
 export interface Section {
@@ -71,6 +73,8 @@ export interface SpreadsheetCell {
   fontName?: string;
   align?: 'left' | 'center' | 'right';
   wrapText?: boolean;
+  /** Format-specific passthrough bucket (backend should preserve unknowns) */
+  extended?: Record<string, unknown>;
 }
 
 export interface SpreadsheetSheet {
@@ -168,6 +172,9 @@ export interface SlideShapeFormatting {
 }
 
 export interface SlideShape {
+  /** Stable PPTX shape identifier (used for lossless save). */
+  shapeId?: number;
+  shapeName?: string;
   type: string;
   text: string;
   x: number;
@@ -183,6 +190,8 @@ export interface SlideShape {
   rotation?: number;            // degrees
   opacity?: number;             // 0-1
   locked?: boolean;
+  /** Format-specific passthrough bucket (backend should preserve unknowns) */
+  extended?: Record<string, unknown>;
 }
 
 export interface PresentationSlide {
