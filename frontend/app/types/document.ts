@@ -143,7 +143,9 @@ export type SpreadsheetToolAction =
   | { type: 'mergeCell' }
   | { type: 'sortColumn'; direction: 'asc' | 'desc' }
   | { type: 'formatPainter' }
-  | { type: 'formula'; value: string };
+  | { type: 'formula'; value: string }
+  | { type: 'insertFunction'; name: string }
+  | { type: 'autoFunction'; name: 'SUM' | 'AVERAGE' | 'COUNT' | 'MIN' | 'MAX' };
 
 export type PresentationToolAction =
   | { type: 'bold' }

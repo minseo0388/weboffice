@@ -6,7 +6,10 @@ import { useAuth } from '../context/AuthContext';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '../components/SpreadsheetGrid';
 import SlideNavigator, { SlideNavigatorHandle } from '../components/SlideNavigator';
-import RibbonManager from '../components/RibbonManager';
+import ExcelRibbon from '../components/ribbon/ExcelRibbon';
+import WordRibbon from '../components/ribbon/WordRibbon';
+import HanwordRibbon from '../components/ribbon/HanwordRibbon';
+import PowerPointRibbon from '../components/ribbon/PowerPointRibbon';
 import {
   FileType,
   DocumentModel,
@@ -531,15 +534,35 @@ export default function EditorInner() {
         <span className={styles.fileName}>{fileName}</span>
       </header>
 
-      <RibbonManager
-        fileType={currentFileType}
-        saveStatus={saveStatus}
-        lastSavedTime={lastSavedTime}
-        onTextAction={handleTextRibbonAction}
-        onSpreadsheetAction={handleSpreadsheetRibbonAction}
-        onPresentationAction={handlePresentationRibbonAction}
-        onExportPdf={handleExportPdf}
-      />
+      {currentFileType === 'xls' || currentFileType === 'xlsx' ? (
+        <ExcelRibbon
+          saveStatus={saveStatus}
+          lastSavedTime={lastSavedTime}
+          onAction={handleSpreadsheetRibbonAction}
+          onExportPdf={handleExportPdf}
+        />
+      ) : currentFileType === 'pptx' ? (
+        <PowerPointRibbon
+          saveStatus={saveStatus}
+          lastSavedTime={lastSavedTime}
+          onAction={handlePresentationRibbonAction}
+          onExportPdf={handleExportPdf}
+        />
+      ) : currentFileType === 'hwp' || currentFileType === 'hwpx' ? (
+        <HanwordRibbon
+          saveStatus={saveStatus}
+          lastSavedTime={lastSavedTime}
+          onAction={handleTextRibbonAction}
+          onExportPdf={handleExportPdf}
+        />
+      ) : (
+        <WordRibbon
+          saveStatus={saveStatus}
+          lastSavedTime={lastSavedTime}
+          onAction={handleTextRibbonAction}
+          onExportPdf={handleExportPdf}
+        />
+      )}
 
       <main className={`${styles.mainArea} ${mainLayoutClass}`}>
         {isSpreadsheetDocument(docModel) ? (

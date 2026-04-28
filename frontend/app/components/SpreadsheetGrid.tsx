@@ -32,6 +32,29 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
   const activeSheet = sheets[activeSheetIdx];
 
+  const toColName = (col: number) => {
+    let n = col + 1;
+    let result = '';
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      result = String.fromCharCode(65 + rem) + result;
+      n = Math.floor((n - 1) / 26);
+    }
+    return result;
+  };
+
+  const getSelectedA1Range = () => {
+    if (!selectedCell) return null;
+    const startRow = selectedRange ? Math.min(selectedRange.start.row, selectedRange.end.row) : selectedCell.row;
+    const endRow = selectedRange ? Math.max(selectedRange.start.row, selectedRange.end.row) : selectedCell.row;
+    const startCol = selectedRange ? Math.min(selectedRange.start.col, selectedRange.end.col) : selectedCell.col;
+    const endCol = selectedRange ? Math.max(selectedRange.start.col, selectedRange.end.col) : selectedCell.col;
+
+    const startA1 = `${toColName(startCol)}${startRow + 1}`;
+    const endA1 = `${toColName(endCol)}${endRow + 1}`;
+    return startA1 === endA1 ? startA1 : `${startA1}:${endA1}`;
+  };
+
   const handlePointerDown = (rowIdx: number, colIdx: number, currentValue: string | number | boolean) => {
     if (editCell && editCell.row === rowIdx && editCell.col === colIdx) return;
     handleCellSave();
@@ -98,6 +121,29 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           type: 'formula',
           value: action.value,
         });
+        return;
+      }
+
+      if (action.type === 'insertFunction') {
+        const nextFormula = `=${action.name.toUpperCase()}()`;
+        onCellChange(activeSheetIdx, selectedCell.row, selectedCell.col, {
+          ...currentCell,
+          type: 'formula',
+          value: nextFormula,
+        });
+        setEditValue(nextFormula);
+        return;
+      }
+
+      if (action.type === 'autoFunction') {
+        const rangeA1 = getSelectedA1Range() || `${toColName(selectedCell.col)}${selectedCell.row + 1}`;
+        const nextFormula = `=${action.name}(${rangeA1})`;
+        onCellChange(activeSheetIdx, selectedCell.row, selectedCell.col, {
+          ...currentCell,
+          type: 'formula',
+          value: nextFormula,
+        });
+        setEditValue(nextFormula);
         return;
       }
 

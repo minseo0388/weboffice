@@ -139,6 +139,34 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         return;
       }
 
+      if (action.type === 'moveSlideUp') {
+        if (activeSlideIdx > 0) {
+          onSlideMove(activeSlideIdx, 'up');
+          setActiveSlideIdx(activeSlideIdx - 1);
+          setSelectedShapeIdx(null);
+        }
+        return;
+      }
+
+      if (action.type === 'moveSlideDown') {
+        if (activeSlideIdx < slides.length - 1) {
+          onSlideMove(activeSlideIdx, 'down');
+          setActiveSlideIdx(activeSlideIdx + 1);
+          setSelectedShapeIdx(null);
+        }
+        return;
+      }
+
+      if (action.type === 'toggleSlideVisibility') {
+        onSlideToggleVisibility(activeSlideIdx);
+        return;
+      }
+
+      if (action.type === 'updateNotes') {
+        onSlideNotesUpdate(activeSlideIdx, action.value);
+        return;
+      }
+
       if (action.type === 'addShape') {
         onShapeAdd(activeSlideIdx, 'text');
         return;
