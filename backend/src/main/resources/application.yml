@@ -57,4 +57,8 @@ storage:
 
 users:
   config:
-    path: ${USERS_CONFIG_PATH:users.json}            # Path to users.json for per-user quota & Google allowlist
+    path: ${USERS_CONFIG_PATH:users.json}            # Google allowlist + per-user quota
+
+accounts:
+  config:
+    path: ${ACCOUNTS_CONFIG_PATH:accounts.json}      # Unified account store (Google ↔ Discord linking)

@@ -348,3 +348,86 @@
   line-height: 2;
   font-size: 1rem;
 }
+
+/* ── Account Linking Widget ── */
+.accountLinking {
+  background: rgba(0,0,0,0.2);
+  border-radius: 14px;
+  padding: 1.2rem;
+  border: 1px solid rgba(255,255,255,0.04);
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.linkMessage {
+  font-size: 0.78rem;
+  color: #73daca;
+  margin: 0 0 0.3rem;
+  line-height: 1.4;
+}
+
+.linkedRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.linkedIcon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.linkedInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.linkedProvider {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9aa5ce;
+}
+
+.linkedEmail {
+  font-size: 0.72rem;
+  color: #73daca;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkedNone {
+  font-size: 0.72rem;
+  color: #565f89;
+}
+
+.linkBtn {
+  background: rgba(122,162,247,0.12);
+  border: 1px solid rgba(122,162,247,0.3);
+  color: #7aa2f7;
+  padding: 0.25rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.linkBtn:hover:not(:disabled) {
+  background: rgba(122,162,247,0.25);
+}
+
+.linkBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -240,10 +240,11 @@ public class StorageService {
 
     /**
      * Returns the effective quota for this user.
-     * Resolves per-user quota from users.json; falls back to global default.
+     * Resolves per-user quota from users.json via the unified accountId.
+     * Falls back to global default if no matching Google email is found.
      */
     public long getEffectiveQuota(UserPrincipal user) {
-        return userConfigService.getQuotaForUser(user.provider(), user.email());
+        return userConfigService.getQuotaForAccount(user.accountId());
     }
 
     private void enforceQuotaBeforeWrite(UserPrincipal user, String fileName, long incomingSize) {

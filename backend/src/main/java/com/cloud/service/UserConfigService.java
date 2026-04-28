@@ -15,15 +15,18 @@ import java.util.Optional;
  *   - Google login allowlist (only listed emails may authenticate)
  *   - Per-user storage quota (quotaBytes per entry, -1 = unlimited)
  *
- * File path is configured via ${users.config.path} in application.yml.
- * Falls back to the global ${storage.quota-bytes} if a user has no explicit quota.
+ * Quota lookup priority:
+ *   1. Look up by Google email via users.json (if the unified account has a Google identity)
+ *   2. Fall back to global ${storage.quota-bytes}
+ *
+ * The AccountLinkingService provides the Google email for a unified accountId.
  *
  * users.json format:
  * {
  *   "users": [
  *     { "email": "alice@gmail.com", "quotaBytes": 3221225472 },
  *     { "email": "bob@gmail.com",   "quotaBytes": 10737418240 },
- *     { "email": "vip@gmail.com",   "quotaBytes": -1 }   <- unlimited
+ *     { "email": "vip@gmail.com",   "quotaBytes": -1 }
  *   ]
  * }
  */
@@ -37,8 +40,13 @@ public class UserConfigService {
     private long defaultQuotaBytes;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AccountLinkingService accountLinkingService;
 
     private JsonNode usersConfig;
+
+    public UserConfigService(AccountLinkingService accountLinkingService) {
+        this.accountLinkingService = accountLinkingService;
+    }
 
     @PostConstruct
     public void load() {
@@ -58,7 +66,8 @@ public class UserConfigService {
                 return;
             }
             usersConfig = objectMapper.readTree(file);
-            System.out.println("[UserConfigService] Loaded users.json: " + usersConfig.path("users").size() + " entries.");
+            System.out.println("[UserConfigService] Loaded users.json: "
+                    + usersConfig.path("users").size() + " entries.");
         } catch (IOException e) {
             System.err.println("[UserConfigService] Failed to parse users.json: " + e.getMessage());
             usersConfig = null;
@@ -92,15 +101,24 @@ public class UserConfigService {
     }
 
     /**
-     * Returns the storage quota for a user identified by provider + userId.
-     * For Google users, the email stored in the JWT claim is used for lookup.
-     * Discord users always get the global default (Discord auth is role-based, not email-based).
+     * Returns the storage quota for a unified account.
+     *
+     * Lookup chain:
+     *   1. If the account has a linked Google email → look it up in users.json
+     *   2. Otherwise → return global default
+     *
+     * This ensures Discord-only accounts still inherit a quota if they later
+     * link a Google account that has a custom quota in users.json.
      */
-    public long getQuotaForUser(String provider, String email) {
-        if ("google".equals(provider) && email != null) {
-            return getQuotaForEmail(email);
+    public long getQuotaForAccount(String accountId) {
+        try {
+            Optional<String> googleEmail = accountLinkingService.getGoogleEmailForAccount(accountId);
+            if (googleEmail.isPresent()) {
+                return getQuotaForEmail(googleEmail.get());
+            }
+        } catch (IOException e) {
+            System.err.println("[UserConfigService] Error reading accounts.json: " + e.getMessage());
         }
-        // Discord: no per-user quota support yet — use global default
         return defaultQuotaBytes;
     }
 

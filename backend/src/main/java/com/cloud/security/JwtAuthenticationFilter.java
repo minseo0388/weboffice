@@ -42,12 +42,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         .parseSignedClaims(token)
                         .getPayload();
 
-                // Reconstruct UserPrincipal from JWT claims
+                // accountId: unified UUID. Falls back to "provider_userId" for tokens
+                // issued before account linking was introduced (backward compatibility).
+                String accountId = claims.get("accountId", String.class);
+                if (accountId == null || accountId.isBlank()) {
+                    String provider = claims.get("provider", String.class);
+                    accountId = provider + "_" + claims.getSubject(); // legacy fallback
+                }
+
                 UserPrincipal principal = new UserPrincipal(
                         claims.getSubject(),
-                        claims.get("email", String.class),
-                        claims.get("name", String.class),
-                        claims.get("provider", String.class)
+                        claims.get("email",    String.class),
+                        claims.get("name",     String.class),
+                        claims.get("provider", String.class),
+                        accountId
                 );
 
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(

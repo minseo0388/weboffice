@@ -18,6 +18,21 @@ interface StorageUsage {
   usagePercent?: number;
 }
 
+interface LinkedIdentity {
+  sub?: string;
+  email?: string;
+  name?: string;
+  id?: string;
+  username?: string;
+}
+
+interface AccountInfo {
+  accountId: string;
+  google: LinkedIdentity;
+  discord: LinkedIdentity;
+  createdAt?: string;
+}
+
 const DEFAULT_MAX_BYTES = 3 * 1024 * 1024 * 1024; // 3 GB default
 
 function getIcon(name: string): string {
@@ -45,6 +60,9 @@ export default function DashboardMain() {
   const [error, setError]         = useState<string | null>(null);
   const [usage, setUsage]         = useState<StorageUsage | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
+  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
+  const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
 
   const authHeader = { Authorization: `Bearer ${user?.token}` } as const;
 
@@ -81,11 +99,73 @@ export default function DashboardMain() {
     }
   }, [user]);
 
+  // ── Fetch account linking info ────────────────────────────────────────────
+  const fetchAccountInfo = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/account/me', { headers: authHeader });
+      if (res.ok) setAccountInfo(await res.json() as AccountInfo);
+    } catch { /* non-fatal */ }
+  }, [user]);
+
   useEffect(() => {
     if (!user) { router.replace('/'); return; }
     fetchFiles();
     fetchUsage();
-  }, [user, fetchFiles, fetchUsage, router]);
+    fetchAccountInfo();
+
+    // Check if we're returning from a link OAuth2 flow
+    const pendingLinkCode = sessionStorage.getItem('pendingLinkCode');
+    const pendingProvider = sessionStorage.getItem('pendingLinkProvider');
+    if (pendingLinkCode && pendingProvider && user.token) {
+      sessionStorage.removeItem('pendingLinkCode');
+      sessionStorage.removeItem('pendingLinkProvider');
+      completeLinking(pendingLinkCode, user.token);
+    }
+  }, [user, fetchFiles, fetchUsage, fetchAccountInfo, router]);
+
+  const completeLinking = async (linkCode: string, token: string) => {
+    try {
+      const res = await fetch('/api/account/link/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ linkCode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLinkMessage('✅ 계정 연결 완료! 변경사항을 반영하려면 다시 로그인해주세요.');
+        fetchAccountInfo();
+      } else {
+        setLinkMessage('❌ 계정 연결 실패: ' + (data.error ?? '알 수 없는 오류'));
+      }
+    } catch {
+      setLinkMessage('❌ 계정 연결 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleLinkProvider = async (targetProvider: string) => {
+    if (!user) return;
+    setLinkingProvider(targetProvider);
+    try {
+      const res = await fetch(`/api/account/link/start?targetProvider=${targetProvider}`, {
+        method: 'POST',
+        headers: authHeader,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLinkMessage('❌ ' + (data.error ?? '연결 시작 실패'));
+        setLinkingProvider(null);
+        return;
+      }
+      // Store link code and navigate to OAuth2 flow
+      sessionStorage.setItem('pendingLinkCode', data.linkCode);
+      sessionStorage.setItem('pendingLinkProvider', targetProvider);
+      window.location.href = data.redirectUrl;
+    } catch {
+      setLinkMessage('❌ 계정 연결 요청 중 오류가 발생했습니다.');
+      setLinkingProvider(null);
+    }
+  };
 
   // ── Upload ────────────────────────────────────────────────────────────────────
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,6 +272,59 @@ export default function DashboardMain() {
             ) : (
               <p className={styles.storageText}>—</p>
             )}
+          </div>
+
+          {/* ── Account Linking Widget ── */}
+          <div className={styles.accountLinking}>
+            <p className={styles.storageLabel}>연결된 계정</p>
+
+            {linkMessage && (
+              <p className={styles.linkMessage}>{linkMessage}</p>
+            )}
+
+            {/* Google */}
+            <div className={styles.linkedRow}>
+              <span className={styles.linkedIcon}>🔵</span>
+              <div className={styles.linkedInfo}>
+                <span className={styles.linkedProvider}>Google</span>
+                {accountInfo?.google?.email ? (
+                  <span className={styles.linkedEmail}>{accountInfo.google.email}</span>
+                ) : (
+                  <span className={styles.linkedNone}>미연결</span>
+                )}
+              </div>
+              {!accountInfo?.google?.email && user.provider !== 'google' && (
+                <button
+                  className={styles.linkBtn}
+                  onClick={() => handleLinkProvider('google')}
+                  disabled={linkingProvider !== null}
+                >
+                  {linkingProvider === 'google' ? '연결 중...' : '연결'}
+                </button>
+              )}
+            </div>
+
+            {/* Discord */}
+            <div className={styles.linkedRow}>
+              <span className={styles.linkedIcon}>🟣</span>
+              <div className={styles.linkedInfo}>
+                <span className={styles.linkedProvider}>Discord</span>
+                {accountInfo?.discord?.username ? (
+                  <span className={styles.linkedEmail}>{accountInfo.discord.username}</span>
+                ) : (
+                  <span className={styles.linkedNone}>미연결</span>
+                )}
+              </div>
+              {!accountInfo?.discord?.id && user.provider !== 'discord' && (
+                <button
+                  className={styles.linkBtn}
+                  onClick={() => handleLinkProvider('discord')}
+                  disabled={linkingProvider !== null}
+                >
+                  {linkingProvider === 'discord' ? '연결 중...' : '연결'}
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
