@@ -63,8 +63,10 @@ export default function ExportMenu({ fileName, token, getDocumentModel, options 
       const url   = URL.createObjectURL(blob);
       const a     = document.createElement('a');
       const base  = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+      // hwpx content-type is application/hwpx+zip; ext = hwpx
+      const ext   = format === 'hwpx' ? 'hwpx' : format;
       a.href      = url;
-      a.download  = `${base}.${format}`;
+      a.download  = `${base}.${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();

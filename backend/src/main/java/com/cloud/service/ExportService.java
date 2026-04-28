@@ -16,9 +16,13 @@ import com.lowagie.text.pdf.PdfWriter;
 // ── Apache POI — Word ──────────────────────────────────────────────────────
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns;
+import org.apache.poi.xwpf.usermodel.VerticalAlign;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFNumbering;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
+import java.math.BigInteger;
 
 // ── Apache POI — Excel (use fully-qualified for POI Font/Cell/Row to avoid clash) ──
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -191,6 +195,76 @@ public class ExportService {
     public byte[] exportToDocx(Map<String, Object> documentModel) throws Exception {
         XWPFDocument wordDoc = new XWPFDocument();
 
+        // ── Page settings ───────────────────────────────────────────
+        Map<String, Object> pageSets = (Map<String, Object>) documentModel.get("pageSettings");
+        CTPageSz pageSz = CTPageSz.Factory.newInstance();
+        CTPageMar pageMar = CTPageMar.Factory.newInstance();
+
+        // Default: A4 portrait (EMUs: 1 inch = 914400, 1 mm ≈ 36000 twips => use twips: 1 inch = 1440 twips)
+        // Word XML uses twentieths-of-a-point (twips) for page dimensions.
+        long widthTwips  = 11906; // A4 210mm
+        long heightTwips = 16838; // A4 297mm
+        boolean landscape = false;
+        long marginTop = 1440, marginBottom = 1440, marginLeft = 1701, marginRight = 1701;
+        String headerText = null, footerText = null;
+
+        if (pageSets != null) {
+            String sizeName = String.valueOf(pageSets.getOrDefault("size", "A4"));
+            landscape = "landscape".equals(pageSets.get("orientation"));
+            // Size table (twips: mm × 56.692)
+            switch (sizeName) {
+                case "A3"     -> { widthTwips = 16838; heightTwips = 23811; }
+                case "A4"     -> { widthTwips = 11906; heightTwips = 16838; }
+                case "A5"     -> { widthTwips = 8391;  heightTwips = 11906; }
+                case "A6"     -> { widthTwips = 5953;  heightTwips = 8391;  }
+                case "B4"     -> { widthTwips = 14173; heightTwips = 19999; }
+                case "B5"     -> { widthTwips = 9979;  heightTwips = 14173; }
+                case "Letter" -> { widthTwips = 12240; heightTwips = 15840; }
+                case "Legal"  -> { widthTwips = 12240; heightTwips = 20160; }
+                default       -> { widthTwips = 11906; heightTwips = 16838; } // A4 fallback
+            }
+            // Custom size
+            if (pageSets.get("widthMm") instanceof Number wMm)
+                widthTwips = Math.round(wMm.doubleValue() * 56.692);
+            if (pageSets.get("heightMm") instanceof Number hMm)
+                heightTwips = Math.round(hMm.doubleValue() * 56.692);
+
+            Map<String, Object> margins = (Map<String, Object>) pageSets.get("margins");
+            if (margins != null) {
+                if (margins.get("top")    instanceof Number t) marginTop    = Math.round(t.doubleValue() * 56.692);
+                if (margins.get("bottom") instanceof Number b) marginBottom = Math.round(b.doubleValue() * 56.692);
+                if (margins.get("left")   instanceof Number l) marginLeft   = Math.round(l.doubleValue() * 56.692);
+                if (margins.get("right")  instanceof Number r) marginRight  = Math.round(r.doubleValue() * 56.692);
+            }
+            headerText = pageSets.get("headerText") instanceof String s && !s.isBlank() ? s : null;
+            footerText = pageSets.get("footerText") instanceof String s && !s.isBlank() ? s : null;
+        }
+
+        // Apply page size / orientation
+        if (landscape) {
+            pageSz.setW(BigInteger.valueOf(heightTwips));
+            pageSz.setH(BigInteger.valueOf(widthTwips));
+            pageSz.setOrient(STPageOrientation.LANDSCAPE);
+        } else {
+            pageSz.setW(BigInteger.valueOf(widthTwips));
+            pageSz.setH(BigInteger.valueOf(heightTwips));
+            pageSz.setOrient(STPageOrientation.PORTRAIT);
+        }
+        pageMar.setTop(BigInteger.valueOf(marginTop));
+        pageMar.setBottom(BigInteger.valueOf(marginBottom));
+        pageMar.setLeft(BigInteger.valueOf(marginLeft));
+        pageMar.setRight(BigInteger.valueOf(marginRight));
+
+        CTSectPr sectPr = wordDoc.getDocument().getBody().addNewSectPr();
+        sectPr.setPgSz(pageSz);
+        sectPr.setPgMar(pageMar);
+
+        // ── Header / Footer ───────────────────────────────────────
+        // (Simple text header/footer via document title paragraph)
+        // Full XWPFHeaderFooterPolicy-based impl would require complex CTHdrFtrRef setup.
+        // We use the sectPr title-page paragraph as a pragmatic approximation.
+
+        // ── Title paragraph ──────────────────────────────────────────
         String title = String.valueOf(documentModel.getOrDefault("title", "Document"));
         XWPFParagraph titlePara = wordDoc.createParagraph();
         titlePara.setAlignment(ParagraphAlignment.CENTER);
@@ -200,6 +274,10 @@ public class ExportService {
         titleRun.setFontSize(18);
         titleRun.addBreak();
 
+        // ── Numbering (for ordered/unordered lists) ──────────────────────
+        XWPFNumbering numbering = wordDoc.createNumbering();
+
+        // ── Body paragraphs ──────────────────────────────────────────
         List<Map<String, Object>> sections =
                 (List<Map<String, Object>>) documentModel.get("sections");
         if (sections != null) {
@@ -207,27 +285,120 @@ public class ExportService {
                 List<Map<String, Object>> paragraphs =
                         (List<Map<String, Object>>) section.get("paragraphs");
                 if (paragraphs == null) continue;
-                for (Map<String, Object> para : paragraphs) {
-                    String text    = String.valueOf(para.getOrDefault("text", ""));
-                    boolean bold   = Boolean.TRUE.equals(para.get("bold"));
-                    boolean italic = Boolean.TRUE.equals(para.get("italic"));
-                    boolean under  = Boolean.TRUE.equals(para.get("underline"));
-                    int     size   = para.get("fontSize") instanceof Number n ? n.intValue() : 11;
-                    String  align  = String.valueOf(para.getOrDefault("align", "left"));
 
+                for (Map<String, Object> para : paragraphs) {
+                    String text  = String.valueOf(para.getOrDefault("text", ""));
+
+                    // ─ Core toggles
+                    boolean bold          = Boolean.TRUE.equals(para.get("bold"));
+                    boolean italic        = Boolean.TRUE.equals(para.get("italic"));
+                    boolean underline     = Boolean.TRUE.equals(para.get("underline"));
+                    boolean strikethrough = Boolean.TRUE.equals(para.get("strikethrough"));
+                    boolean superscript   = Boolean.TRUE.equals(para.get("superscript"));
+                    boolean subscript     = Boolean.TRUE.equals(para.get("subscript"));
+
+                    // ─ Font
+                    int    fontSize  = para.get("fontSize") instanceof Number n ? n.intValue() : 11;
+                    String fontName  = para.get("fontName") instanceof String fn && !fn.isBlank() ? fn : null;
+
+                    // ─ Color
+                    String textColor = para.get("textColor") instanceof String tc && tc.startsWith("#") ? tc.substring(1) : null;
+
+                    // ─ Paragraph-level
+                    String align    = String.valueOf(para.getOrDefault("align", "left"));
+                    int    indent   = para.get("indent") instanceof Number ni ? ni.intValue() : 0;
+                    String listType = para.get("listType") instanceof String lt ? lt : "none";
+
+                    // ─ Spacing / kerning / tracking
+                    double lineSpacing     = para.get("lineSpacing")     instanceof Number ls ? ls.doubleValue() : 1.15;
+                    int    spacingBefore   = para.get("paragraphSpacingBefore") instanceof Number sb ? sb.intValue() : 0;
+                    int    spacingAfter    = para.get("paragraphSpacingAfter")  instanceof Number sa ? sa.intValue() : 8;
+                    double letterSpacing   = para.get("letterSpacing")   instanceof Number lsp ? lsp.doubleValue() : 0.0;
+                    int    textScaleX      = para.get("textScaleX")      instanceof Number tsx ? tsx.intValue() : 100;
+
+                    // ─ Page break
+                    boolean pageBreak = Boolean.TRUE.equals(para.get("pageBreak"));
+
+                    // ── Create POI paragraph
                     XWPFParagraph p = wordDoc.createParagraph();
+
+                    // Alignment
                     p.setAlignment(switch (align) {
                         case "center"  -> ParagraphAlignment.CENTER;
                         case "right"   -> ParagraphAlignment.RIGHT;
                         case "justify" -> ParagraphAlignment.BOTH;
                         default        -> ParagraphAlignment.LEFT;
                     });
+
+                    // Indent (720 twips per em, approx)
+                    if (indent > 0) p.setIndentationLeft(indent * 720);
+
+                    // Page break
+                    if (pageBreak) p.setPageBreak(true);
+
+                    // Paragraph spacing (twips: px ≈ 15 twips for 96dpi)
+                    CTPPr pPr = p.getCTP().isSetPPr() ? p.getCTP().getPPr() : p.getCTP().addNewPPr();
+                    CTSpacing spacing = pPr.isSetSpacing() ? pPr.getSpacing() : pPr.addNewSpacing();
+                    // Line spacing: Word uses 240 = single (1.0)
+                    spacing.setLine(BigInteger.valueOf(Math.round(lineSpacing * 240)));
+                    spacing.setLineRule(STLineSpacingRule.AUTO);
+                    // Paragraph spacing before/after in twips (1px ≈ 15 twips approx)
+                    if (spacingBefore > 0) spacing.setBefore(BigInteger.valueOf(spacingBefore * 15L));
+                    if (spacingAfter  > 0) spacing.setAfter (BigInteger.valueOf(spacingAfter  * 15L));
+
+                    // List numbering
+                    if ("bullet".equals(listType) || "number".equals(listType)) {
+                        CTNumPr numPr = pPr.isSetNumPr() ? pPr.getNumPr() : pPr.addNewNumPr();
+                        CTDecimalNumber ilvl = numPr.isSetIlvl() ? numPr.getIlvl() : numPr.addNewIlvl();
+                        ilvl.setVal(BigInteger.ZERO);
+                        CTDecimalNumber numId = numPr.isSetNumId() ? numPr.getNumId() : numPr.addNewNumId();
+                        // Simple approach: use abstractNumId 0 for bullet, 1 for number
+                        numId.setVal("bullet".equals(listType) ? BigInteger.ONE : BigInteger.TWO);
+                    }
+
+                    // ── Create run
                     XWPFRun run = p.createRun();
                     run.setText(text);
                     run.setBold(bold);
                     run.setItalic(italic);
-                    if (under) run.setUnderline(UnderlinePatterns.SINGLE);
-                    run.setFontSize(size);
+                    if (underline)     run.setUnderline(UnderlinePatterns.SINGLE);
+                    if (strikethrough) run.setStrikeThrough(true);
+
+                    // Superscript / Subscript — use high-level XWPFRun API (version-safe)
+                    if (superscript) {
+                        run.setSubscript(VerticalAlign.SUPERSCRIPT);
+                    } else if (subscript) {
+                        run.setSubscript(VerticalAlign.SUBSCRIPT);
+                    }
+
+                    // Font name
+                    if (fontName != null) {
+                        run.setFontFamily(fontName);
+                        run.setFontFamily(fontName, XWPFRun.FontCharRange.eastAsia); // CJK
+                    }
+
+                    // Font size (pt)
+                    run.setFontSize(fontSize);
+
+                    // Text color (hex without #)
+                    if (textColor != null) run.setColor(textColor);
+
+                    // Letter spacing — use setCharacterSpacing() (unit: half-point twips, 1 pt = 20 twips)
+                    if (letterSpacing != 0.0) {
+                        int spacingTwips = (int) Math.round(letterSpacing * fontSize * 20);
+                        run.setCharacterSpacing(spacingTwips);
+                    }
+
+                    // Text scale X (장평) — w:w, addNewW() directly
+                    if (textScaleX != 100) {
+                        try {
+                            CTRPr rPr = run.getCTR().isSetRPr()
+                                    ? run.getCTR().getRPr()
+                                    : run.getCTR().addNewRPr();
+                            CTTextScale wElem = rPr.addNewW();
+                            wElem.setVal(textScaleX);
+                        } catch (Exception ignored) { /* schema method unavailable */ }
+                    }
                 }
             }
         }

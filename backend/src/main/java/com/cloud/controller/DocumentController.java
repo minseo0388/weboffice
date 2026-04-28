@@ -5,6 +5,7 @@ import com.cloud.service.DocumentSaveService;
 import com.cloud.service.DocumentServiceFactory;
 import com.cloud.service.ExportService;
 import com.cloud.service.FontMappingService;
+import com.cloud.service.HwpxService;
 import com.cloud.service.StorageService;
 import kr.dogfoot.hwplib.object.HWPFile;
 import kr.dogfoot.hwplib.object.bodytext.Section;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -58,6 +60,7 @@ public class DocumentController {
     private final StorageService storageService;
     private final DocumentSaveService documentSaveService;
     private final ExportService exportService;
+    private final HwpxService hwpxService;
 
     @Autowired
     public DocumentController(
@@ -65,13 +68,15 @@ public class DocumentController {
             DocumentServiceFactory documentServiceFactory,
             StorageService storageService,
             DocumentSaveService documentSaveService,
-            ExportService exportService
+            ExportService exportService,
+            HwpxService hwpxService
     ) {
         this.fontMappingService = fontMappingService;
         this.documentServiceFactory = documentServiceFactory;
         this.storageService = storageService;
         this.documentSaveService = documentSaveService;
         this.exportService = exportService;
+        this.hwpxService = hwpxService;
     }
 
     /**
@@ -87,11 +92,18 @@ public class DocumentController {
 
         String lower = originalName.toLowerCase();
         try {
-            // Route to format-specific parser
             if (lower.endsWith(".hwp")) {
-                return parseHwp(file);
+                // HWP binary — viewer mode only
+                Map<String, Object> model = new LinkedHashMap<>(parseHwp(file).getBody() != null
+                        ? Objects.requireNonNull(parseHwp(file).getBody()) : Map.of());
+                model.put("readOnly", true);
+                model.put("readOnlyReason", "HWP 바이너리 형식은 뼏어보기 전용입니다. 수정하려면 HWPX로 변환하세요.");
+                return ResponseEntity.ok(model);
             } else if (lower.endsWith(".hwpx")) {
-                return parseHwpx(file);
+                // HWPX — full parsing via HwpxService (hwpxlib)
+                Map<String, Object> model = hwpxService.parseHwpx(file);
+                model.put("fontMap", fontMappingService.getFullMap());
+                return ResponseEntity.ok(model);
             } else {
                 Map<String, Object> model = documentServiceFactory.parseDocument(file);
                 model.put("fontMap", fontMappingService.getFullMap());
@@ -153,24 +165,33 @@ public class DocumentController {
 
                     String format = documentServiceFactory.resolveFormat(fileName);
 
-                    if ("hwp".equals(format) || "hwpx".equals(format)) {
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> sections = (List<Map<String, Object>>) documentModel.get("sections");
-                    if (sections == null) {
-                        return ResponseEntity.badRequest().body(Map.of("error", "documentModel.sections is required for HWP/HWPX"));
+                    if ("hwp".equals(format)) {
+                        return ResponseEntity.status(400).body(Map.of(
+                            "error", "HWP 파일은 뼏어보기 전용입니다. 내보내기 메뉴에서 HWPX 또는 DOCX로 다운로드하세요.",
+                            "readOnly", true
+                        ));
                     }
 
-                    DocumentSaveService.DocumentSaveRequest saveRequest =
-                        new DocumentSaveService.DocumentSaveRequest(fileName, sections);
-                    DocumentSaveService.DocumentSaveResponse legacyResponse = documentSaveService.saveDocument(user, saveRequest);
+                    if ("hwpx".equals(format)) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> sections = (List<Map<String, Object>>) documentModel.get("sections");
+                        if (sections == null) {
+                            return ResponseEntity.badRequest().body(Map.of("error", "documentModel.sections is required for HWPX"));
+                        }
 
-                    return ResponseEntity.ok(Map.of(
-                        "success", legacyResponse.success(),
-                        "fileName", legacyResponse.fileName(),
-                        "fileType", format,
-                        "message", legacyResponse.message(),
-                        "savedBytes", legacyResponse.savedBytes()
-                    ));
+                        // Download original HWPX from storage, save via HwpxService
+                        InputStream originalStream = storageService.downloadFile(user, fileName);
+                        byte[] originalBytes = originalStream.readAllBytes();
+                        byte[] updatedBytes  = hwpxService.saveHwpx(originalBytes, documentModel);
+                        storageService.uploadFile(user, fileName, updatedBytes);
+
+                        return ResponseEntity.ok(Map.of(
+                            "success", true,
+                            "fileName", fileName,
+                            "fileType", format,
+                            "message", "HWPX 저장 완료.",
+                            "savedBytes", updatedBytes.length
+                        ));
                     }
 
                 StorageService.SaveResult response = storageService.saveEditorContent(user, fileName, documentModel);
@@ -239,6 +260,11 @@ public class DocumentController {
                     data        = exportService.exportToDocx(documentModel);
                     outName     = baseName + ".docx";
                     contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                }
+                case "hwpx" -> {
+                    data        = hwpxService.exportToHwpx(documentModel);
+                    outName     = baseName + ".hwpx";
+                    contentType = "application/hwpx+zip";
                 }
                 case "xlsx" -> {
                     data        = exportService.exportToXlsx(documentModel);

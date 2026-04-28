@@ -1,3 +1,19 @@
+/* ─── Google Fonts & CDN Imports (must be first) ────────────────────────── */
+/* Pretendard Variable (jsDelivr) */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+
+/* Korean Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&family=Noto+Serif+KR:wght@300;400;500;600;700;900&family=Noto+Sans+Mono:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Black+Han+Sans&family=Do+Hyeon&family=Sunflower:wght@300;500;700&family=Poor+Story&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&family=Nanum+Pen+Script&family=Gaegu:wght@300;400;700&family=Cute+Font&display=swap');
+
+/* Latin Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Roboto:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Fira+Code:wght@300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
+
+/* ─── Reset ─────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -17,19 +33,17 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Phase 4: Dark Mode Implementation (Invert trick for full app coverage without massive CSS rewrites) */
+/* Phase 4: Dark Mode */
 @media (prefers-color-scheme: dark) {
   html {
     filter: invert(0.92) hue-rotate(180deg);
   }
-  
-  /* Re-invert media, images, or specific dynamic elements to keep their original colors */
   img, video, canvas, .sphere {
     filter: invert(1) hue-rotate(180deg);
   }
 }
 
-/* Final Polish: Dialog and Menu Animations */
+/* Dialog and Menu Animations */
 @keyframes popIn {
   0% { opacity: 0; transform: scale(0.95) translateY(-10px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
@@ -39,21 +53,19 @@ body {
   animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Serve NanumGothic from /public/fonts/ as WOFF2 */
+/* ─── Local fonts ────────────────────────────────────────────────────────── */
 @font-face {
   font-family: 'NanumGothic';
   src: url('/fonts/NanumGothic.woff2') format('woff2');
   font-weight: 400;
   font-display: swap;
 }
-
 @font-face {
   font-family: 'NanumGothic';
   src: url('/fonts/NanumGothicBold.woff2') format('woff2');
   font-weight: 700;
   font-display: swap;
 }
-
 @font-face {
   font-family: 'HamchoromBatang';
   src: url('/fonts/HamchoromBatang.woff2') format('woff2');

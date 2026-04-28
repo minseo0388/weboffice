@@ -27,8 +27,11 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.5")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.5")
 
-    // hwplib — HWP binary parser. Published on Maven Central by neolord0.
+    // hwplib — HWP binary parser/writer. Published on Maven Central by neolord0.
     implementation("kr.dogfoot:hwplib:1.1.9")
+
+    // hwpxlib — HWPX (XML-based) parser/writer. Maven Central, neolord0.
+    implementation("kr.dogfoot:hwpxlib:1.0.8")
 
     // Apache POI — MS Office format parsing and writing
     implementation("org.apache.poi:poi-ooxml:5.2.4")       // DOCX, XLSX, PPTX

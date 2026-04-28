@@ -29,8 +29,22 @@ import styles from './editor.module.css';
 const TEXT_EXPORT_OPTIONS: ExportOption[] = [
   { format: 'pdf',  label: 'PDF 문서',     icon: '📄' },
   { format: 'docx', label: 'Word (.docx)', icon: '📝' },
+  { format: 'hwpx', label: '한글 (.hwpx)', icon: '🇰🇷' },
   { format: 'txt',  label: '텍스트',       icon: '📃' },
   { format: 'html', label: 'HTML 페이지',  icon: '🌐' },
+];
+// HWPX 편집 파일 — 저장 후 HWPX 다운로드 + 변환 내보내기
+const HWPX_EXPORT_OPTIONS: ExportOption[] = [
+  { format: 'hwpx', label: '한글 (.hwpx)',  icon: '🇰🇷' },
+  { format: 'pdf',  label: 'PDF 문서',      icon: '📄' },
+  { format: 'docx', label: 'Word (.docx)',  icon: '📝' },
+  { format: 'txt',  label: '텍스트',        icon: '📃' },
+];
+// HWP 뷰어 전용 — 편집 불가, 변환 내보내기만 지원
+const HWP_EXPORT_OPTIONS: ExportOption[] = [
+  { format: 'pdf',  label: 'PDF로 내보내기',    icon: '📄' },
+  { format: 'docx', label: 'Word로 내보내기',   icon: '📝' },
+  { format: 'hwpx', label: 'HWPX로 내보내기',  icon: '🇰🇷' },
 ];
 const EXCEL_EXPORT_OPTIONS: ExportOption[] = [
   { format: 'pdf',  label: 'PDF 문서',       icon: '📄' },
@@ -62,6 +76,8 @@ export default function EditorInner() {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
+  const [readOnly, setReadOnly] = useState(false);
+  const [readOnlyBannerDismissed, setReadOnlyBannerDismissed] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const textCanvasRef = useRef<DocumentCanvasHandle>(null);
@@ -133,10 +149,14 @@ export default function EditorInner() {
           return;
         }
         if (!parseRes.ok) throw new Error('Failed to parse document');
-        const parsed = (await parseRes.json()) as DocumentModel;
+        const parsed = (await parseRes.json()) as DocumentModel & { readOnly?: boolean; readOnlyReason?: string };
+
+        // HWP binary — viewer mode only
+        if (parsed.readOnly) {
+          setReadOnly(true);
+        }
 
         setDocModel(parsed);
-        // Initialize History Stack
         historyRef.current = [parsed];
         historyIdxRef.current = 0;
         setLoading(false);
@@ -153,6 +173,8 @@ export default function EditorInner() {
   const autoSaveDocument = useCallback(
     async (model: DocumentModel) => {
       if (!user?.token || !fileName) return;
+      // HWP 븷어보기 전용 다파일은 저장 차단
+      if (readOnly) return;
 
       setSaveStatus('saving');
 
@@ -592,10 +614,40 @@ export default function EditorInner() {
     <div className={styles.shell}>
       <header className={styles.header}>
         <button className={styles.backBtn} onClick={handleBackToDashboard}>
-          ← Back
+          &larr; Back
         </button>
         <span className={styles.fileName}>{fileName}</span>
+        {readOnly && (
+          <span style={{
+            marginLeft: '12px', padding: '3px 10px', borderRadius: '20px',
+            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+            color: '#f87171', fontSize: '11px', fontWeight: 600,
+          }}>
+            뷰어 전용
+          </span>
+        )}
       </header>
+
+      {/* HWP 뷰어 모드 안내 배너 */}
+      {readOnly && !readOnlyBannerDismissed && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '10px 20px',
+          background: 'linear-gradient(90deg, rgba(239,68,68,0.12), rgba(239,68,68,0.06))',
+          borderBottom: '1px solid rgba(239,68,68,0.25)',
+          fontSize: '13px', color: '#fca5a5',
+        }}>
+          <span>🔒</span>
+          <span>
+            <b>HWP 뷰어 전용</b> &mdash; HWP 바이너리 형식은 서식 수정이 지원되지 않습니다.
+            내보내기 패널에서 <b>DOCX</b> 또는 <b>PDF</b>로 저장하세요.
+          </span>
+          <button
+            onClick={() => setReadOnlyBannerDismissed(true)}
+            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '18px' }}
+          >&times;</button>
+        </div>
+      )}
 
       {currentFileType === 'xls' || currentFileType === 'xlsx' ? (
         <ExcelRibbon
@@ -620,16 +672,36 @@ export default function EditorInner() {
           exportOptions={PPT_EXPORT_OPTIONS}
         />
       ) : currentFileType === 'hwp' || currentFileType === 'hwpx' ? (
-        <HanwordRibbon
-          saveStatus={saveStatus}
-          lastSavedTime={lastSavedTime}
-          onAction={handleTextRibbonAction}
-          onExportPdf={handleExportPdf}
-          fileName={fileName}
-          token={user?.token}
-          getDocumentModel={() => docModel}
-          exportOptions={TEXT_EXPORT_OPTIONS}
-        />
+        <div style={{ position: 'relative' }}>
+          <HanwordRibbon
+            saveStatus={saveStatus}
+            lastSavedTime={lastSavedTime}
+            onAction={readOnly ? () => {} : handleTextRibbonAction}
+            onExportPdf={handleExportPdf}
+            fileName={fileName}
+            token={user?.token}
+            getDocumentModel={() => docModel}
+            exportOptions={currentFileType === 'hwp' ? HWP_EXPORT_OPTIONS : HWPX_EXPORT_OPTIONS}
+          />
+          {readOnly && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(15,16,30,0.6)',
+              backdropFilter: 'blur(1px)',
+              zIndex: 50,  /* 내보내기 드롭다운은 z-index 100으로 이 위에 렌더됨 */
+              cursor: 'not-allowed',
+            }}>
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%,-50%)',
+                color: '#f87171', fontSize: '12px', fontWeight: 600,
+                pointerEvents: 'none',
+              }}>
+                🔒 HWP는 뷰어 전용 — 내보내기(→)로 다운로드하세요
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <WordRibbon
           saveStatus={saveStatus}

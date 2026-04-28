@@ -24,8 +24,12 @@ export interface Paragraph {
   highlightColor?: string;
   indent?: number;
   listType?: 'bullet' | 'number' | 'none';
-  lineSpacing?: number;
-  pageBreak?: boolean;  // force page break before this paragraph
+  lineSpacing?: number;           // 줄 간격 (e.g. 1.0 ~ 3.0)
+  letterSpacing?: number;         // 자간 em 단위 (e.g. -0.05 ~ 0.3)
+  textScaleX?: number;            // 장평 % (e.g. 80 ~ 150, default 100)
+  paragraphSpacingBefore?: number; // 문단 위 간격 (px)
+  paragraphSpacingAfter?: number;  // 문단 아래 간격 (px)
+  pageBreak?: boolean;
 }
 
 export interface Section {
@@ -81,6 +85,60 @@ export interface SpreadsheetSheet {
   rowHeights?: number[];        // per-row height in pixels
 }
 
+/** Standard page size definitions (in mm) */
+export type PageSizeName =
+  | 'A3' | 'A4' | 'A5' | 'A6'
+  | 'B4' | 'B5'
+  | 'Letter' | 'Legal' | 'Ledger' | 'Tabloid'
+  | 'Custom';
+
+export type PageOrientation = 'portrait' | 'landscape';
+
+export interface PageMargins {
+  top: number;    // mm
+  bottom: number;
+  left: number;
+  right: number;
+  header?: number;
+  footer?: number;
+  gutter?: number;
+}
+
+export interface PageSettings {
+  size: PageSizeName;
+  orientation: PageOrientation;
+  margins: PageMargins;
+  /** Width and height in mm (auto-set for named sizes, user-set for Custom) */
+  widthMm?: number;
+  heightMm?: number;
+  columns?: number;      // 다단
+  columnGap?: number;    // mm
+  headerText?: string;
+  footerText?: string;
+  showLineNumbers?: boolean;
+  mirrorMargins?: boolean;
+}
+
+export const PAGE_SIZES: Record<PageSizeName, { w: number; h: number }> = {
+  A3:      { w: 297,   h: 420   },
+  A4:      { w: 210,   h: 297   },
+  A5:      { w: 148,   h: 210   },
+  A6:      { w: 105,   h: 148   },
+  B4:      { w: 250,   h: 353   },
+  B5:      { w: 176,   h: 250   },
+  Letter:  { w: 215.9, h: 279.4 },
+  Legal:   { w: 215.9, h: 355.6 },
+  Ledger:  { w: 279.4, h: 431.8 },
+  Tabloid: { w: 279.4, h: 431.8 },
+  Custom:  { w: 210,   h: 297   },
+};
+
+export const DEFAULT_PAGE_SETTINGS: PageSettings = {
+  size: 'A4',
+  orientation: 'portrait',
+  margins: { top: 25, bottom: 25, left: 30, right: 30, header: 15, footer: 15 },
+};
+
 export interface BaseDocumentModel {
   title: string;
   format: string;
@@ -90,6 +148,7 @@ export interface BaseDocumentModel {
 
 export interface TextDocumentModel extends BaseDocumentModel {
   sections: Section[];
+  pageSettings?: PageSettings;
 }
 
 export interface SpreadsheetDocumentModel extends BaseDocumentModel {
@@ -159,12 +218,22 @@ export type TextToolAction =
   | { type: 'indent'; value: 'increase' | 'decrease' }
   | { type: 'list'; value: 'bullet' | 'number' | 'none' }
   | { type: 'lineSpacing'; value: number }
+  | { type: 'letterSpacing'; value: number }
+  | { type: 'textScaleX'; value: number }
+  | { type: 'paragraphSpacingBefore'; value: number }
+  | { type: 'paragraphSpacingAfter'; value: number }
+  | { type: 'setPageSize'; value: PageSizeName }
+  | { type: 'setOrientation'; value: PageOrientation }
+  | { type: 'setMargins'; value: Partial<PageMargins> }
+  | { type: 'setColumns'; value: number }
+  | { type: 'setHeaderText'; value: string }
+  | { type: 'setFooterText'; value: string }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'addParagraph' }
   | { type: 'deleteParagraph' }
   | { type: 'insertTable'; rows: number; cols: number }
-  | { type: 'insertImage'; value: string }   // base64 dataURL
+  | { type: 'insertImage'; value: string }
   | { type: 'find'; value: string }
   | { type: 'replace'; find: string; replace: string }
   | { type: 'pageBreak' }

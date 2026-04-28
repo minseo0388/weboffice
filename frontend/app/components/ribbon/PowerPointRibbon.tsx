@@ -5,6 +5,7 @@ import styles from './OfficeRibbon.module.css';
 import { SaveStatus, PresentationToolAction } from '../../types/document';
 import SaveStatusIndicator from './SaveStatusIndicator';
 import ExportMenu, { ExportOption } from './ExportMenu';
+import FontPicker from './FontPicker';
 
 interface PowerPointRibbonProps {
   saveStatus: SaveStatus;
@@ -32,8 +33,9 @@ export default function PowerPointRibbon({
   const imageReplaceInputRef = useRef<HTMLInputElement | null>(null);
   const bgImageInputRef      = useRef<HTMLInputElement | null>(null);
 
-  const [opacityVal, setOpacityVal]   = useState(100);
-  const [rotationVal, setRotationVal] = useState(0);
+  const [opacityVal,   setOpacityVal]   = useState(100);
+  const [rotationVal,  setRotationVal]  = useState(0);
+  const [selectedFont, setSelectedFont] = useState('Pretendard Variable');
 
   // ── Image handlers ──────────────────────────────────────────────────────────
   const handleInsertImage = () => imageInputRef.current?.click();
@@ -153,9 +155,7 @@ export default function PowerPointRibbon({
 
         {/* 텍스트 서식 */}
         <div className={styles.group}>
-          <select className={styles.select} onChange={(e) => onAction({ type: 'fontName', value: e.target.value })}>
-            {['Calibri', 'Arial', 'Times New Roman', 'NanumGothic', '맑은 고딕'].map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+          <FontPicker value={selectedFont} onChange={(f) => { setSelectedFont(f); onAction({ type: 'fontName', value: f }); }} />
           <select className={styles.select} style={{ width: '52px' }} onChange={(e) => onAction({ type: 'fontSize', value: Number(e.target.value) })}>
             {[12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72].map(s => <option key={s} value={s}>{s}</option>)}
           </select>

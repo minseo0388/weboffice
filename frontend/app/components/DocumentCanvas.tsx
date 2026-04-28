@@ -2,7 +2,10 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import styles from './DocumentCanvas.module.css';
-import { Paragraph, TextDocumentModel, TextToolAction } from '../types/document';
+import {
+  Paragraph, TextDocumentModel, TextToolAction,
+  PAGE_SIZES, DEFAULT_PAGE_SETTINGS, PageSettings,
+} from '../types/document';
 
 interface DocumentCanvasProps {
   document: TextDocumentModel;
@@ -335,16 +338,84 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
       }
       if (action.type === 'lineSpacing') {
         updateSelectedParagraph((para) => ({ ...para, lineSpacing: action.value }));
+        return;
+      }
+      if (action.type === 'letterSpacing') {
+        updateSelectedParagraph((para) => ({ ...para, letterSpacing: action.value }));
+        return;
+      }
+      if (action.type === 'textScaleX') {
+        updateSelectedParagraph((para) => ({ ...para, textScaleX: action.value }));
+        return;
+      }
+      if (action.type === 'paragraphSpacingBefore') {
+        updateSelectedParagraph((para) => ({ ...para, paragraphSpacingBefore: action.value }));
+        return;
+      }
+      if (action.type === 'paragraphSpacingAfter') {
+        updateSelectedParagraph((para) => ({ ...para, paragraphSpacingAfter: action.value }));
+        return;
+      }
+
+      // ── Page settings ─────────────────────────────────────────
+      const curPage: PageSettings = document.pageSettings ?? DEFAULT_PAGE_SETTINGS;
+      if (action.type === 'setPageSize') {
+        const dims = PAGE_SIZES[action.value];
+        onContentChange({ ...document, pageSettings: { ...curPage, size: action.value, widthMm: dims.w, heightMm: dims.h } });
+        return;
+      }
+      if (action.type === 'setOrientation') {
+        onContentChange({ ...document, pageSettings: { ...curPage, orientation: action.value } });
+        return;
+      }
+      if (action.type === 'setMargins') {
+        onContentChange({ ...document, pageSettings: { ...curPage, margins: { ...curPage.margins, ...action.value } } });
+        return;
+      }
+      if (action.type === 'setColumns') {
+        onContentChange({ ...document, pageSettings: { ...curPage, columns: action.value } });
+        return;
+      }
+      if (action.type === 'setHeaderText') {
+        onContentChange({ ...document, pageSettings: { ...curPage, headerText: action.value } });
+        return;
+      }
+      if (action.type === 'setFooterText') {
+        onContentChange({ ...document, pageSettings: { ...curPage, footerText: action.value } });
       }
     },
   }), [editState, updateSelectedParagraph, document, sections, pushHistory, onContentChange]);
+
+  // ── Compute page dimensions for canvas ────────────────────────────
+  const pageSettings = useMemo(() => document.pageSettings ?? DEFAULT_PAGE_SETTINGS, [document.pageSettings]);
+  const pageDims = useMemo(() => {
+    const base = PAGE_SIZES[pageSettings.size] ?? PAGE_SIZES['A4'];
+    const w = pageSettings.orientation === 'landscape' ? base.h : base.w;
+    const h = pageSettings.orientation === 'landscape' ? base.w : base.h;
+    // 1mm = 3.7795px at 96dpi
+    const PX_PER_MM = 3.7795;
+    return { widthPx: Math.round(w * PX_PER_MM), heightPx: Math.round(h * PX_PER_MM) };
+  }, [pageSettings]);
+  const marginPx = useMemo(() => {
+    const PX_PER_MM = 3.7795;
+    const m = pageSettings.margins;
+    return {
+      top:    Math.round(m.top    * PX_PER_MM),
+      bottom: Math.round(m.bottom * PX_PER_MM),
+      left:   Math.round(m.left   * PX_PER_MM),
+      right:  Math.round(m.right  * PX_PER_MM),
+    };
+  }, [pageSettings]);
 
   return (
     <div className={styles.container}>
       {/* ─ Document Title ─ */}
       <div className={styles.titleSection}>
         <h1 className={styles.title}>{documentTitle}</h1>
-        <p className={styles.subtitle}>{document.format.toUpperCase()} Document</p>
+        <p className={styles.subtitle}>
+          {pageSettings.size} {pageSettings.orientation === 'landscape' ? '가로' : '세로'}
+          {' · '}{document.format.toUpperCase()}
+        </p>
       </div>
 
       {/* ─ Editor Workspace (Ruler + Canvas) ─ */}
@@ -369,7 +440,25 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
           </div>
 
           {/* ─ Canvas ─ */}
-          <div className={styles.canvas}>
+          <div
+            className={styles.canvas}
+            style={{
+              width:      `${pageDims.widthPx}px`,
+              minHeight:  `${pageDims.heightPx}px`,
+              paddingTop:    `${marginPx.top}px`,
+              paddingBottom: `${marginPx.bottom}px`,
+              paddingLeft:   `${marginPx.left}px`,
+              paddingRight:  `${marginPx.right}px`,
+              boxSizing: 'border-box',
+              columnCount: pageSettings.columns && pageSettings.columns > 1 ? pageSettings.columns : undefined,
+            }}
+          >
+            {/* Header */}
+            {pageSettings.headerText && (
+              <div style={{ borderBottom: '1px solid #e2e8f0', marginBottom: '8px', paddingBottom: '4px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+                {pageSettings.headerText}
+              </div>
+            )}
             {sections.length === 0 ? (
               <div className={styles.emptyState}>
                 <p>문서가 비어있습니다.</p>
@@ -387,20 +476,30 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                         className={`${styles.paragraph} ${isEditing ? styles.editing : ''}`}
                         style={{
                           textAlign: para.align || 'left',
-                          fontFamily: para.fontName || fontName || 'NanumGothic',
-                          fontSize: `${para.fontSize || fontSize || 14}pt`,
+                          fontFamily: para.fontName || fontName || 'Pretendard Variable, NanumGothic, sans-serif',
+                          // superscript/subscript: font size shrinks to 75%
+                          fontSize: para.superscript || para.subscript
+                            ? `${(para.fontSize || fontSize || 14) * 0.75}pt`
+                            : `${para.fontSize || fontSize || 14}pt`,
                           color: para.textColor || '#111827',
                           backgroundColor: para.highlightColor || 'transparent',
                           fontWeight: para.bold ? 'bold' : 'normal',
                           fontStyle: para.italic ? 'italic' : 'normal',
                           textDecoration: [
-                            para.underline    ? 'underline'    : '',
+                            para.underline     ? 'underline'    : '',
                             para.strikethrough ? 'line-through' : '',
                           ].filter(Boolean).join(' ') || 'none',
                           verticalAlign: para.superscript ? 'super' : para.subscript ? 'sub' : 'baseline',
-                          fontSize: para.superscript || para.subscript ? `${(para.fontSize || fontSize || 14) * 0.75}pt` : `${para.fontSize || fontSize || 14}pt`,
                           lineHeight: para.lineSpacing || 1.5,
+                          letterSpacing: para.letterSpacing !== undefined ? `${para.letterSpacing}em` : undefined,
+                          // 장평: CSS transform scaleX (does not affect layout width)
+                          transform: para.textScaleX !== undefined && para.textScaleX !== 100
+                            ? `scaleX(${para.textScaleX / 100})`
+                            : undefined,
+                          transformOrigin: 'left center',
                           marginLeft: `${(para.indent || 0) * 2}rem`,
+                          marginTop: para.paragraphSpacingBefore ? `${para.paragraphSpacingBefore}px` : undefined,
+                          marginBottom: para.paragraphSpacingAfter ? `${para.paragraphSpacingAfter}px` : undefined,
                           borderTop: para.pageBreak ? '2px dashed rgba(122,162,247,0.4)' : undefined,
                           paddingTop: para.pageBreak ? '8px' : undefined,
                           display: 'flex',
