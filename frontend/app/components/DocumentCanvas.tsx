@@ -31,9 +31,17 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
   const [fontSize, setFontSize] = useState(14);
   const [fontName, setFontName] = useState('NanumGothic');
   const textInputRef = useRef<HTMLInputElement>(null);
-  
-  // ── Cursor Persistence (Phase 4 Audit) ──
+  const historyRef   = useRef<TextDocumentModel[]>([]);
+  const futureRef    = useRef<TextDocumentModel[]>([]);
+
+  // Cursor persistence
   const selectionRef = useRef<{ start: number | null; end: number | null }>({ start: null, end: null });
+
+  // Helper: push to undo history
+  const pushHistory = useCallback((model: TextDocumentModel) => {
+    historyRef.current = [...historyRef.current.slice(-49), model];
+    futureRef.current  = [];
+  }, []);
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean } | null>(null);
@@ -107,7 +115,8 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
             }
           : section
       );
-      onContentChange({ ...document, sections: updatedSections });
+      const next = { ...document, sections: updatedSections };
+      onContentChange(next);
     }
   };
 
@@ -160,94 +169,175 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
 
   useImperativeHandle(ref, () => ({
     applyAction: (action: TextToolAction) => {
-      if (action.type === 'fontName') {
-        setFontName(action.value);
+      // ── Undo / Redo ───────────────────────────────────────────
+      if (action.type === 'undo') {
+        const prev = historyRef.current.pop();
+        if (prev) { futureRef.current.push(document); onContentChange(prev); }
+        return;
       }
-
-      if (action.type === 'fontSize') {
-        setFontSize(action.value);
-      }
-
-      if (!editState) {
+      if (action.type === 'redo') {
+        const next = futureRef.current.pop();
+        if (next) { historyRef.current.push(document); onContentChange(next); }
         return;
       }
 
-      if (action.type === 'bold' || action.type === 'italic' || action.type === 'underline') {
-        const key = action.type;
-        updateSelectedParagraph((para) => ({
-          ...para,
-          [key]: !(para[key as keyof Paragraph] as boolean),
+      // ── Add / Delete paragraph ────────────────────────────────
+      if (action.type === 'addParagraph') {
+        pushHistory(document);
+        const newSections = sections.map((sec, si) => {
+          if (si !== (editState?.sectionIdx ?? 0)) return sec;
+          const insertIdx = (editState?.paraIdx ?? sec.paragraphs.length - 1) + 1;
+          const newParas = [...sec.paragraphs];
+          newParas.splice(insertIdx, 0, { text: '', fontSize: 11, fontName: 'NanumGothic' });
+          return { ...sec, paragraphs: newParas };
+        });
+        onContentChange({ ...document, sections: newSections });
+        return;
+      }
+      if (action.type === 'deleteParagraph' && editState) {
+        pushHistory(document);
+        const newSections = sections.map((sec, si) => {
+          if (si !== editState.sectionIdx) return sec;
+          const newParas = sec.paragraphs.filter((_, pi) => pi !== editState.paraIdx);
+          return { ...sec, paragraphs: newParas.length > 0 ? newParas : [{ text: '' }] };
+        });
+        setEditState(null);
+        onContentChange({ ...document, sections: newSections });
+        return;
+      }
+
+      // ── Insert Table ──────────────────────────────────────────
+      if (action.type === 'insertTable') {
+        pushHistory(document);
+        const tableText = Array.from({ length: action.rows }, (_, r) =>
+          Array.from({ length: action.cols }, (_, c) => `[${r+1},${c+1}]`).join('\t')
+        ).join('\n');
+        const newSections = sections.map((sec, si) => {
+          if (si !== (editState?.sectionIdx ?? 0)) return sec;
+          const insertIdx = (editState?.paraIdx ?? sec.paragraphs.length - 1) + 1;
+          const newParas = [...sec.paragraphs];
+          newParas.splice(insertIdx, 0, { text: tableText, fontName: 'Courier New', fontSize: 10 });
+          return { ...sec, paragraphs: newParas };
+        });
+        onContentChange({ ...document, sections: newSections });
+        return;
+      }
+
+      // ── Insert Image ──────────────────────────────────────────
+      if (action.type === 'insertImage') {
+        pushHistory(document);
+        const newSections = sections.map((sec, si) => {
+          if (si !== (editState?.sectionIdx ?? 0)) return sec;
+          const insertIdx = (editState?.paraIdx ?? sec.paragraphs.length - 1) + 1;
+          const newParas = [...sec.paragraphs];
+          newParas.splice(insertIdx, 0, { text: `[IMAGE:${action.value.substring(0, 40)}...]`, fontName: 'monospace', fontSize: 10 });
+          return { ...sec, paragraphs: newParas };
+        });
+        onContentChange({ ...document, sections: newSections });
+        return;
+      }
+
+      // ── Page Break ───────────────────────────────────────────
+      if (action.type === 'pageBreak') {
+        pushHistory(document);
+        const newSections = sections.map((sec, si) => {
+          if (si !== (editState?.sectionIdx ?? 0)) return sec;
+          const insertIdx = (editState?.paraIdx ?? sec.paragraphs.length - 1) + 1;
+          const newParas = [...sec.paragraphs];
+          newParas.splice(insertIdx, 0, { text: '', pageBreak: true });
+          return { ...sec, paragraphs: newParas };
+        });
+        onContentChange({ ...document, sections: newSections });
+        return;
+      }
+
+      // ── Find / Replace ───────────────────────────────────────
+      if (action.type === 'find') {
+        const found = sections.some((sec, si) =>
+          sec.paragraphs.some((para, pi) => {
+            if (para.text.includes(action.value)) {
+              setEditState({ sectionIdx: si, paraIdx: pi, text: para.text });
+              return true;
+            }
+            return false;
+          })
+        );
+        if (!found) alert(`"${action.value}" 를 찾을 수 없습니다.`);
+        return;
+      }
+      if (action.type === 'replace') {
+        pushHistory(document);
+        const newSections = sections.map((sec) => ({
+          ...sec,
+          paragraphs: sec.paragraphs.map((para) => ({
+            ...para,
+            text: para.text.replaceAll(action.find, action.replace),
+          })),
         }));
+        onContentChange({ ...document, sections: newSections });
+        return;
+      }
+
+      // ── Clear Formatting ────────────────────────────────────
+      if (action.type === 'clearFormatting') {
+        updateSelectedParagraph((para) => ({
+          text: para.text,
+        }));
+        return;
+      }
+
+      // ── Font / Size ─────────────────────────────────────────
+      if (action.type === 'fontName') { setFontName(action.value); }
+      if (action.type === 'fontSize') { setFontSize(action.value); }
+
+      if (!editState) return;
+
+      // ── Toggle formatting ───────────────────────────────────
+      if (
+        action.type === 'bold' || action.type === 'italic' || action.type === 'underline' ||
+        action.type === 'strikethrough' || action.type === 'superscript' || action.type === 'subscript'
+      ) {
+        const key = action.type as keyof Paragraph;
+        updateSelectedParagraph((para) => ({ ...para, [key]: !(para[key] as boolean) }));
         return;
       }
 
       if (action.type === 'align') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          align: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, align: action.value }));
         return;
       }
-
       if (action.type === 'textColor') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          textColor: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, textColor: action.value }));
         return;
       }
-
       if (action.type === 'fontName') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          fontName: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, fontName: action.value }));
         return;
       }
-
       if (action.type === 'fontSize') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          fontSize: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, fontSize: action.value }));
         return;
       }
-
       if (action.type === 'highlightColor') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          highlightColor: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, highlightColor: action.value }));
         return;
       }
-
       if (action.type === 'indent') {
         updateSelectedParagraph((para) => {
-          const currentIndent = para.indent || 0;
-          return {
-            ...para,
-            indent: action.value === 'increase' ? currentIndent + 1 : Math.max(0, currentIndent - 1),
-          };
+          const cur = para.indent || 0;
+          return { ...para, indent: action.value === 'increase' ? cur + 1 : Math.max(0, cur - 1) };
         });
         return;
       }
-
       if (action.type === 'list') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          listType: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, listType: action.value }));
         return;
       }
-
       if (action.type === 'lineSpacing') {
-        updateSelectedParagraph((para) => ({
-          ...para,
-          lineSpacing: action.value,
-        }));
+        updateSelectedParagraph((para) => ({ ...para, lineSpacing: action.value }));
       }
     },
-  }), [editState, updateSelectedParagraph]);
+  }), [editState, updateSelectedParagraph, document, sections, pushHistory, onContentChange]);
 
   return (
     <div className={styles.container}>
@@ -303,9 +393,16 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                           backgroundColor: para.highlightColor || 'transparent',
                           fontWeight: para.bold ? 'bold' : 'normal',
                           fontStyle: para.italic ? 'italic' : 'normal',
-                          textDecoration: para.underline ? 'underline' : 'none',
+                          textDecoration: [
+                            para.underline    ? 'underline'    : '',
+                            para.strikethrough ? 'line-through' : '',
+                          ].filter(Boolean).join(' ') || 'none',
+                          verticalAlign: para.superscript ? 'super' : para.subscript ? 'sub' : 'baseline',
+                          fontSize: para.superscript || para.subscript ? `${(para.fontSize || fontSize || 14) * 0.75}pt` : `${para.fontSize || fontSize || 14}pt`,
                           lineHeight: para.lineSpacing || 1.5,
                           marginLeft: `${(para.indent || 0) * 2}rem`,
+                          borderTop: para.pageBreak ? '2px dashed rgba(122,162,247,0.4)' : undefined,
+                          paddingTop: para.pageBreak ? '8px' : undefined,
                           display: 'flex',
                           alignItems: 'flex-start',
                         }}

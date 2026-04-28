@@ -30,6 +30,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [isDragging, setIsDragging] = useState(false);
   const [editValue, setEditValue] = useState('');
 
+  // Undo/Redo history per sheet index
+  const historyRef = React.useRef<SpreadsheetSheet[][]>([]);
+  const futureRef  = React.useRef<SpreadsheetSheet[][]>([]);
+  const clipboardRef = React.useRef<SpreadsheetCell | null>(null);
+
+  const pushHistory = React.useCallback((currentSheets: SpreadsheetSheet[]) => {
+    historyRef.current = [...historyRef.current.slice(-49), JSON.parse(JSON.stringify(currentSheets))];
+    futureRef.current  = [];
+  }, []);
+
   const activeSheet = sheets[activeSheetIdx];
 
   const toColName = (col: number) => {
@@ -92,62 +102,156 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
   useImperativeHandle(ref, () => ({
     applyAction: (action: SpreadsheetToolAction) => {
-      if (!selectedCell) {
+      // ── Undo / Redo ───────────────────────────────────────────
+      if (action.type === 'undo') {
+        const prev = historyRef.current.pop();
+        if (prev) { futureRef.current.push(JSON.parse(JSON.stringify(sheets))); prev.forEach((s, i) => onSheetReplace(i, s)); }
+        return;
+      }
+      if (action.type === 'redo') {
+        const next = futureRef.current.pop();
+        if (next) { historyRef.current.push(JSON.parse(JSON.stringify(sheets))); next.forEach((s, i) => onSheetReplace(i, s)); }
         return;
       }
 
-      const currentCell = activeSheet.grid[selectedCell.row]?.[selectedCell.col];
-      if (!currentCell) {
+      // ── Add/Delete row ────────────────────────────────────────
+      if (action.type === 'addRow') {
+        pushHistory(sheets);
+        const insertAt = selectedCell ? selectedCell.row + 1 : activeSheet.grid.length;
+        const cols = activeSheet.grid[0]?.length || 10;
+        const newRow = Array.from({ length: cols }, (_, c) => ({ row: insertAt, col: c, type: 'string' as const, value: '' }));
+        const newGrid = [
+          ...activeSheet.grid.slice(0, insertAt).map((r, ri) => r.map(c => ({ ...c, row: ri }))),
+          newRow,
+          ...activeSheet.grid.slice(insertAt).map((r, ri) => r.map(c => ({ ...c, row: insertAt + 1 + ri }))),
+        ];
+        onSheetReplace(activeSheetIdx, { ...activeSheet, grid: newGrid, rowCount: newGrid.length });
+        return;
+      }
+      if (action.type === 'deleteRow' && selectedCell) {
+        pushHistory(sheets);
+        const newGrid = activeSheet.grid.filter((_, ri) => ri !== selectedCell.row).map((r, ri) => r.map(c => ({ ...c, row: ri })));
+        onSheetReplace(activeSheetIdx, { ...activeSheet, grid: newGrid, rowCount: newGrid.length });
+        setSelectedCell(null);
         return;
       }
 
-      if (action.type === 'sortColumn') {
+      // ── Add/Delete column ─────────────────────────────────────
+      if (action.type === 'addCol') {
+        pushHistory(sheets);
+        const insertAt = selectedCell ? selectedCell.col + 1 : (activeSheet.grid[0]?.length || 0);
+        const newGrid = activeSheet.grid.map((row, ri) => [
+          ...row.slice(0, insertAt),
+          { row: ri, col: insertAt, type: 'string' as const, value: '' },
+          ...row.slice(insertAt).map(c => ({ ...c, col: c.col + 1 })),
+        ]);
+        onSheetReplace(activeSheetIdx, { ...activeSheet, grid: newGrid, columnCount: newGrid[0]?.length || 0 });
+        return;
+      }
+      if (action.type === 'deleteCol' && selectedCell) {
+        pushHistory(sheets);
+        const newGrid = activeSheet.grid.map((row) =>
+          row.filter((_, ci) => ci !== selectedCell.col).map((c, ci) => ({ ...c, col: ci }))
+        );
+        onSheetReplace(activeSheetIdx, { ...activeSheet, grid: newGrid, columnCount: newGrid[0]?.length || 0 });
+        setSelectedCell(null);
+        return;
+      }
+
+      // ── Add/Delete sheet ─────────────────────────────────────
+      if (action.type === 'addSheet') {
+        pushHistory(sheets);
+        const newIdx = sheets.length;
+        const cols = 10;
+        const rows = 20;
+        const newGrid = Array.from({ length: rows }, (_, r) =>
+          Array.from({ length: cols }, (_, c) => ({ row: r, col: c, type: 'string' as const, value: '' }))
+        );
+        onSheetReplace(newIdx, { sheetIndex: newIdx, name: `Sheet${newIdx + 1}`, rowCount: rows, columnCount: cols, grid: newGrid });
+        setActiveSheetIdx(newIdx);
+        return;
+      }
+      if (action.type === 'deleteSheet' && sheets.length > 1) {
+        pushHistory(sheets);
+        // Remove current sheet — parent must handle sheet removal
+        // We signal by replacing with an empty-grid sheet named __DELETE__
+        onSheetReplace(activeSheetIdx, { ...activeSheet, name: '__DELETE__' });
+        setActiveSheetIdx(Math.max(0, activeSheetIdx - 1));
+        return;
+      }
+
+      // ── Freeze rows / cols ────────────────────────────────────
+      if (action.type === 'freezeRows') {
+        onSheetReplace(activeSheetIdx, { ...activeSheet, frozenRows: action.count });
+        return;
+      }
+      if (action.type === 'freezeCols') {
+        onSheetReplace(activeSheetIdx, { ...activeSheet, frozenCols: action.count });
+        return;
+      }
+
+      // ── Copy / Paste ───────────────────────────────────────────
+      if (action.type === 'copyRange' && selectedCell) {
+        clipboardRef.current = { ...activeSheet.grid[selectedCell.row]?.[selectedCell.col] };
+        return;
+      }
+      if (action.type === 'pasteRange' && selectedCell && clipboardRef.current) {
+        pushHistory(sheets);
+        const newGrid = activeSheet.grid.map((row, ri) =>
+          row.map((cell, ci) =>
+            ri === selectedCell.row && ci === selectedCell.col
+              ? { ...clipboardRef.current!, row: ri, col: ci }
+              : cell
+          )
+        );
+        onSheetReplace(activeSheetIdx, { ...activeSheet, grid: newGrid });
+        return;
+      }
+
+      // ── Sort / Filter ────────────────────────────────────────
+      if (action.type === 'sortColumn' && selectedCell) {
+        pushHistory(sheets);
         const sortedRows = [...activeSheet.grid].sort((rowA, rowB) => {
           const a = String(rowA[selectedCell.col]?.value ?? '');
           const b = String(rowB[selectedCell.col]?.value ?? '');
           return action.direction === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
         });
-
-        onSheetReplace(activeSheetIdx, {
-          ...activeSheet,
-          grid: sortedRows,
-        });
+        onSheetReplace(activeSheetIdx, { ...activeSheet, grid: sortedRows });
         return;
       }
 
-      if (action.type === 'formula') {
+      // ── Formula / Function ──────────────────────────────────
+      if (action.type === 'formula' && selectedCell) {
         onCellChange(activeSheetIdx, selectedCell.row, selectedCell.col, {
-          ...currentCell,
-          type: 'formula',
-          value: action.value,
+          ...(activeSheet.grid[selectedCell.row]?.[selectedCell.col] || { row: selectedCell.row, col: selectedCell.col, type: 'formula', value: '' }),
+          type: 'formula', value: action.value,
         });
         return;
       }
-
-      if (action.type === 'insertFunction') {
+      if (action.type === 'insertFunction' && selectedCell) {
         const nextFormula = `=${action.name.toUpperCase()}()`;
         onCellChange(activeSheetIdx, selectedCell.row, selectedCell.col, {
-          ...currentCell,
-          type: 'formula',
-          value: nextFormula,
+          ...(activeSheet.grid[selectedCell.row]?.[selectedCell.col] || { row: selectedCell.row, col: selectedCell.col, type: 'formula', value: '' }),
+          type: 'formula', value: nextFormula,
         });
         setEditValue(nextFormula);
         return;
       }
-
-      if (action.type === 'autoFunction') {
+      if (action.type === 'autoFunction' && selectedCell) {
         const rangeA1 = getSelectedA1Range() || `${toColName(selectedCell.col)}${selectedCell.row + 1}`;
         const nextFormula = `=${action.name}(${rangeA1})`;
         onCellChange(activeSheetIdx, selectedCell.row, selectedCell.col, {
-          ...currentCell,
-          type: 'formula',
-          value: nextFormula,
+          ...(activeSheet.grid[selectedCell.row]?.[selectedCell.col] || { row: selectedCell.row, col: selectedCell.col, type: 'formula', value: '' }),
+          type: 'formula', value: nextFormula,
         });
         setEditValue(nextFormula);
         return;
       }
 
       if (action.type === 'formatPainter') return;
+
+      // ── Range-based formatting ────────────────────────────────
+      if (!selectedCell) return;
 
       const minRow = selectedRange ? Math.min(selectedRange.start.row, selectedRange.end.row) : selectedCell.row;
       const maxRow = selectedRange ? Math.max(selectedRange.start.row, selectedRange.end.row) : selectedCell.row;
@@ -162,16 +266,20 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         for (let c = minCol; c <= maxCol; c++) {
           const cell = row[c];
           if (!cell) continue;
-
           let newCell = { ...cell };
           changed = true;
 
-          if (action.type === 'mergeCell') newCell.merged = !newCell.merged;
-          if (action.type === 'textColor') newCell.textColor = action.value;
+          if (action.type === 'mergeCell')   newCell.merged = true;
+          if (action.type === 'unmergeCell') { newCell.merged = false; newCell.colSpan = undefined; newCell.rowSpan = undefined; }
+          if (action.type === 'clearCell')   { newCell.value = ''; newCell.type = 'empty'; }
+          if (action.type === 'textColor')       newCell.textColor = action.value;
           if (action.type === 'backgroundColor') newCell.backgroundColor = action.value;
-          if (action.type === 'bold' || action.type === 'italic' || action.type === 'underline') {
-            newCell[action.type] = !newCell[action.type];
-          }
+          if (action.type === 'bold' || action.type === 'italic' || action.type === 'underline') newCell[action.type] = !newCell[action.type];
+          if (action.type === 'alignCell')    newCell.align = action.value;
+          if (action.type === 'numberFormat') newCell.numberFormat = action.value;
+          if (action.type === 'fontSizeCell') newCell.fontSize = action.value;
+          if (action.type === 'fontNameCell') newCell.fontName = action.value;
+          if (action.type === 'wrapText')     newCell.wrapText = !newCell.wrapText;
 
           row[c] = newCell;
         }
@@ -182,7 +290,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         onSheetReplace(activeSheetIdx, { ...activeSheet, grid: updatedGrid });
       }
     },
-  }), [selectedCell, selectedRange, activeSheet, activeSheetIdx, onCellChange, onSheetReplace]);
+  }), [selectedCell, selectedRange, activeSheet, activeSheetIdx, onCellChange, onSheetReplace, sheets, pushHistory]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (editCell) {
@@ -283,6 +391,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                         textDecoration: cell.underline ? 'underline' : 'none',
                         color: cell.textColor || 'inherit',
                         backgroundColor: cell.backgroundColor || undefined,
+                        textAlign: cell.align || 'left',
+                        fontSize: cell.fontSize ? `${cell.fontSize}pt` : undefined,
+                        fontFamily: cell.fontName || undefined,
+                        whiteSpace: cell.wrapText ? 'pre-wrap' : 'nowrap',
+                        overflow: cell.wrapText ? 'visible' : 'hidden',
+                        textOverflow: cell.wrapText ? undefined : 'ellipsis',
                       }}
                     >
                       {editCell?.row === rowIdx && editCell?.col === colIdx ? (
@@ -309,43 +423,30 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       {/* Sheet Tabs Bottom */}
       <div className={styles.bottomSheetBar}>
         <div className={styles.sheetTabs}>
-          {sheets.map((sheet, idx) => (
+          {sheets.filter(s => s.name !== '__DELETE__').map((sheet, idx) => (
             <button
               key={idx}
               className={`${styles.sheetTab} ${activeSheetIdx === idx ? styles.active : ''}`}
               onClick={() => setActiveSheetIdx(idx)}
               onDoubleClick={() => {
                 const newName = prompt('새 시트 이름:', sheet.name);
-                if (newName) {
-                  onSheetReplace(idx, { ...sheet, name: newName });
-                }
+                if (newName) onSheetReplace(idx, { ...sheet, name: newName });
               }}
             >
               {sheet.name || `Sheet ${idx + 1}`}
             </button>
           ))}
         </div>
-        <button
-          className={styles.addSheetBtn}
-          onClick={() => {
-            const cols = activeSheet.grid[0]?.length || 10;
-            const rows = activeSheet.grid.length || 20;
-            const newGrid = Array(rows).fill(0).map((_, r) =>
-              Array(cols).fill(0).map((_, c) => ({
-                row: r,
-                col: c,
-                type: 'string' as const,
-                value: '',
-              }))
-            );
-            // Append logic would require changing parent API, but we simulate addition if possible
-            // Actually, we can add a new sheet if we pass a new sheets array back to root...
-            // but for parity UI we'll just show it.
-            console.log('Added sheet to ExcelService');
-          }}
-        >
-          +
-        </button>
+        <button className={styles.addSheetBtn} onClick={() => {
+          const newIdx = sheets.length;
+          const cols = activeSheet.grid[0]?.length || 10;
+          const rows = activeSheet.grid.length || 20;
+          const newGrid = Array.from({ length: rows }, (_, r) =>
+            Array.from({ length: cols }, (_, c) => ({ row: r, col: c, type: 'string' as const, value: '' }))
+          );
+          onSheetReplace(newIdx, { sheetIndex: newIdx, name: `Sheet${newIdx + 1}`, rowCount: rows, columnCount: cols, grid: newGrid });
+          setActiveSheetIdx(newIdx);
+        }}>+</button>
       </div>
     </div>
   );

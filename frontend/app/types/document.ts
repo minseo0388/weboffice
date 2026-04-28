@@ -16,12 +16,16 @@ export interface Paragraph {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strikethrough?: boolean;
+  superscript?: boolean;
+  subscript?: boolean;
   textColor?: string;
   align?: 'left' | 'center' | 'right' | 'justify';
   highlightColor?: string;
-  indent?: number; // indent level (0, 1, 2...)
+  indent?: number;
   listType?: 'bullet' | 'number' | 'none';
-  lineSpacing?: number; // e.g. 1.0, 1.15, 1.5, 2.0
+  lineSpacing?: number;
+  pageBreak?: boolean;  // force page break before this paragraph
 }
 
 export interface Section {
@@ -48,6 +52,7 @@ export interface SpreadsheetCell {
   row: number;
   col: number;
   value: string | number | boolean;
+  displayValue?: string;        // formatted display (e.g. "1,234.56")
   type: 'string' | 'number' | 'boolean' | 'formula' | 'empty';
   bold?: boolean;
   italic?: boolean;
@@ -55,6 +60,13 @@ export interface SpreadsheetCell {
   textColor?: string;
   backgroundColor?: string;
   merged?: boolean;
+  colSpan?: number;
+  rowSpan?: number;
+  numberFormat?: string;        // e.g. '0.00', '#,##0', 'yyyy-mm-dd'
+  fontSize?: number;
+  fontName?: string;
+  align?: 'left' | 'center' | 'right';
+  wrapText?: boolean;
 }
 
 export interface SpreadsheetSheet {
@@ -63,6 +75,10 @@ export interface SpreadsheetSheet {
   rowCount: number;
   columnCount: number;
   grid: SpreadsheetCell[][];
+  frozenRows?: number;
+  frozenCols?: number;
+  colWidths?: number[];         // per-column width in pixels
+  rowHeights?: number[];        // per-row height in pixels
 }
 
 export interface BaseDocumentModel {
@@ -93,7 +109,7 @@ export interface SlideShapeFormatting {
 }
 
 export interface SlideShape {
-  type: string; // 'text', 'rect', 'ellipse', 'image', 'triangle', 'right_arrow', 'hexagon', 'star', 'round_rect'
+  type: string;
   text: string;
   x: number;
   y: number;
@@ -103,8 +119,11 @@ export interface SlideShape {
   backgroundColor?: string;
   borderColor?: string;
   borderWidth?: number;
-  imageUrl?: string; // For image shapes (Base64 or URL)
+  imageUrl?: string;
   imageFit?: 'cover' | 'contain' | 'fill';
+  rotation?: number;            // degrees
+  opacity?: number;             // 0-1
+  locked?: boolean;
 }
 
 export interface PresentationSlide {
@@ -112,6 +131,9 @@ export interface PresentationSlide {
   shapes: SlideShape[];
   notes?: string;
   isHidden?: boolean;
+  backgroundColor?: string;     // slide background color
+  backgroundImage?: string;     // slide background image (base64 or URL)
+  transition?: 'none' | 'fade' | 'slide' | 'zoom';
 }
 
 export interface PresentationDocumentModel extends BaseDocumentModel {
@@ -126,6 +148,9 @@ export type TextToolAction =
   | { type: 'bold' }
   | { type: 'italic' }
   | { type: 'underline' }
+  | { type: 'strikethrough' }
+  | { type: 'superscript' }
+  | { type: 'subscript' }
   | { type: 'textColor'; value: string }
   | { type: 'fontName'; value: string }
   | { type: 'fontSize'; value: number }
@@ -133,7 +158,17 @@ export type TextToolAction =
   | { type: 'highlightColor'; value: string }
   | { type: 'indent'; value: 'increase' | 'decrease' }
   | { type: 'list'; value: 'bullet' | 'number' | 'none' }
-  | { type: 'lineSpacing'; value: number };
+  | { type: 'lineSpacing'; value: number }
+  | { type: 'undo' }
+  | { type: 'redo' }
+  | { type: 'addParagraph' }
+  | { type: 'deleteParagraph' }
+  | { type: 'insertTable'; rows: number; cols: number }
+  | { type: 'insertImage'; value: string }   // base64 dataURL
+  | { type: 'find'; value: string }
+  | { type: 'replace'; find: string; replace: string }
+  | { type: 'pageBreak' }
+  | { type: 'clearFormatting' };
 
 export type SpreadsheetToolAction =
   | { type: 'bold' }
@@ -142,11 +177,31 @@ export type SpreadsheetToolAction =
   | { type: 'textColor'; value: string }
   | { type: 'backgroundColor'; value: string }
   | { type: 'mergeCell' }
+  | { type: 'unmergeCell' }
   | { type: 'sortColumn'; direction: 'asc' | 'desc' }
   | { type: 'formatPainter' }
   | { type: 'formula'; value: string }
   | { type: 'insertFunction'; name: string }
-  | { type: 'autoFunction'; name: 'SUM' | 'AVERAGE' | 'COUNT' | 'MIN' | 'MAX' };
+  | { type: 'autoFunction'; name: 'SUM' | 'AVERAGE' | 'COUNT' | 'MIN' | 'MAX' }
+  | { type: 'undo' }
+  | { type: 'redo' }
+  | { type: 'addRow' }
+  | { type: 'deleteRow' }
+  | { type: 'addCol' }
+  | { type: 'deleteCol' }
+  | { type: 'addSheet' }
+  | { type: 'deleteSheet' }
+  | { type: 'numberFormat'; value: string }   // e.g. '0.00', '#,##0'
+  | { type: 'freezeRows'; count: number }
+  | { type: 'freezeCols'; count: number }
+  | { type: 'filterColumn' }
+  | { type: 'copyRange' }
+  | { type: 'pasteRange' }
+  | { type: 'alignCell'; value: 'left' | 'center' | 'right' }
+  | { type: 'fontSizeCell'; value: number }
+  | { type: 'fontNameCell'; value: string }
+  | { type: 'wrapText' }
+  | { type: 'clearCell' };
 
 export type PresentationToolAction =
   | { type: 'bold' }
@@ -181,15 +236,29 @@ export type PresentationToolAction =
   | { type: 'addHexagon' }
   | { type: 'addStar' }
   | { type: 'addRoundRect' }
+  | { type: 'addLine' }
+  | { type: 'addCallout' }
   | { type: 'moveSlideUp' }
   | { type: 'moveSlideDown' }
   | { type: 'toggleSlideVisibility' }
   | { type: 'setShapeFillColor'; value: string }
   | { type: 'setShapeBorderColor'; value: string }
   | { type: 'setShapeBorderWidth'; value: number }
+  | { type: 'setShapeOpacity'; value: number }
+  | { type: 'setShapeRotation'; value: number }
   | { type: 'nudgeShape'; dx: number; dy: number }
   | { type: 'togglePresentMode' }
   | { type: 'updateNotes'; value: string }
+  | { type: 'setSlideBackground'; value: string }  // color hex
+  | { type: 'setSlideBackgroundImage'; value: string }  // base64
+  | { type: 'setSlideTransition'; value: 'none' | 'fade' | 'slide' | 'zoom' }
+  | { type: 'undo' }
+  | { type: 'redo' }
+  | { type: 'zoomIn' }
+  | { type: 'zoomOut' }
+  | { type: 'lockShape' }
+  | { type: 'groupShapes' }
+  | { type: 'ungroupShapes' }
   | { type: 'aiTranslate' };
 
 export function isSpreadsheetDocument(model: DocumentModel | null): model is SpreadsheetDocumentModel {
