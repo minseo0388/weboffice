@@ -2,12 +2,17 @@ import React from 'react';
 import styles from './OfficeRibbon.module.css';
 import { SaveStatus, SpreadsheetToolAction } from '../../types/document';
 import SaveStatusIndicator from './SaveStatusIndicator';
+import ExportMenu, { ExportOption } from './ExportMenu';
 
 interface ExcelRibbonProps {
   saveStatus: SaveStatus;
   lastSavedTime: string;
   onAction: (action: SpreadsheetToolAction) => void;
   onExportPdf?: () => void;
+  fileName?: string;
+  token?: string;
+  getDocumentModel?: () => object | null;
+  exportOptions?: ExportOption[];
 }
 
 const COMMON_FUNCTIONS = [
@@ -19,7 +24,10 @@ const COMMON_FUNCTIONS = [
   'ROUND', 'ROUNDUP', 'ROUNDDOWN', 'ABS', 'SQRT', 'POWER',
 ];
 
-export default function ExcelRibbon({ saveStatus, lastSavedTime, onAction, onExportPdf }: ExcelRibbonProps) {
+export default function ExcelRibbon({
+  saveStatus, lastSavedTime, onAction, onExportPdf,
+  fileName, token, getDocumentModel, exportOptions,
+}: ExcelRibbonProps) {
   return (
     <div className={styles.ribbonRoot}>
       <div className={styles.tabRow}>
@@ -31,7 +39,16 @@ export default function ExcelRibbon({ saveStatus, lastSavedTime, onAction, onExp
         <button className={styles.tab}>Data</button>
         <button className={styles.tab}>Review</button>
         <button className={styles.tab}>View</button>
-        {onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>Print (PDF)</button>}
+        {exportOptions && fileName && getDocumentModel ? (
+          <ExportMenu
+            fileName={fileName}
+            token={token}
+            getDocumentModel={getDocumentModel}
+            options={exportOptions}
+          />
+        ) : (
+          onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>Print (PDF)</button>
+        )}
       </div>
 
       <div className={styles.formulaBarWrap}>

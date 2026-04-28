@@ -3,6 +3,7 @@ package com.cloud.controller;
 import com.cloud.model.UserPrincipal;
 import com.cloud.service.DocumentSaveService;
 import com.cloud.service.DocumentServiceFactory;
+import com.cloud.service.ExportService;
 import com.cloud.service.FontMappingService;
 import com.cloud.service.StorageService;
 import kr.dogfoot.hwplib.object.HWPFile;
@@ -12,6 +13,7 @@ import kr.dogfoot.hwplib.object.bodytext.paragraph.text.HWPChar;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.text.HWPCharNormal;
 import kr.dogfoot.hwplib.reader.HWPReader;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -55,18 +57,21 @@ public class DocumentController {
     private final DocumentServiceFactory documentServiceFactory;
     private final StorageService storageService;
     private final DocumentSaveService documentSaveService;
+    private final ExportService exportService;
 
     @Autowired
     public DocumentController(
             FontMappingService fontMappingService,
             DocumentServiceFactory documentServiceFactory,
             StorageService storageService,
-            DocumentSaveService documentSaveService
+            DocumentSaveService documentSaveService,
+            ExportService exportService
     ) {
         this.fontMappingService = fontMappingService;
         this.documentServiceFactory = documentServiceFactory;
         this.storageService = storageService;
         this.documentSaveService = documentSaveService;
+        this.exportService = exportService;
     }
 
     /**
@@ -192,36 +197,108 @@ public class DocumentController {
     }
 
     /**
-     * POST /api/documents/export-pdf
-     * Exports the current document model to a PDF file.
+     * POST /api/documents/export
+     * Universal export endpoint. Converts the in-memory DocumentModel to the requested format.
+     *
+     * Request body:
+     * {
+     *   "format": "pdf" | "docx" | "xlsx" | "pptx" | "txt" | "csv" | "html",
+     *   "fileName": "original-filename.hwp",
+     *   "documentModel": { ... }
+     * }
      */
-    @PostMapping("/export-pdf")
-    public ResponseEntity<byte[]> exportPdf(
+    @PostMapping("/export")
+    public ResponseEntity<byte[]> exportDocument(
             @AuthenticationPrincipal UserPrincipal user,
-            @RequestBody Map<String, Object> documentModel) {
-        if (user == null) {
-            return ResponseEntity.status(401).build();
+            @RequestBody Map<String, Object> body) {
+
+        if (user == null) return ResponseEntity.status(401).build();
+
+        String format = String.valueOf(body.getOrDefault("format", "pdf")).toLowerCase();
+        String fileName = String.valueOf(body.getOrDefault("fileName", "document"));
+        String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> documentModel = (Map<String, Object>) body.get("documentModel");
+        if (documentModel == null) {
+            return ResponseEntity.badRequest().build();
         }
 
         try {
-            // Simplified PDF Generation for Phase 4 implementation
-            String title = (String) documentModel.getOrDefault("title", "document");
-            String pdfContent = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
-                    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" +
-                    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n" +
-                    "4 0 obj\n<< /Length 0 >>\nstream\nBT /F1 12 Tf 50 750 Td (" + title + " - Exported PDF) Tj ET\nendstream\nendobj\n" +
-                    "xref\n0 5\n0000000000 65535 f \n0000000010 00000 n \n0000000060 00000 n \n0000000118 00000 n \n0000000204 00000 n \n" +
-                    "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n280\n%%EOF";
-            
-            byte[] pdfBytes = pdfContent.getBytes("UTF-8");
+            byte[] data;
+            String outName;
+            String contentType;
+
+            switch (format) {
+                case "pdf" -> {
+                    data        = exportService.exportToPdf(documentModel);
+                    outName     = baseName + ".pdf";
+                    contentType = "application/pdf";
+                }
+                case "docx" -> {
+                    data        = exportService.exportToDocx(documentModel);
+                    outName     = baseName + ".docx";
+                    contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                }
+                case "xlsx" -> {
+                    data        = exportService.exportToXlsx(documentModel);
+                    outName     = baseName + ".xlsx";
+                    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                }
+                case "pptx" -> {
+                    data        = exportService.exportToPptx(documentModel);
+                    outName     = baseName + ".pptx";
+                    contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+                }
+                case "txt" -> {
+                    data        = exportService.exportToTxt(documentModel);
+                    outName     = baseName + ".txt";
+                    contentType = "text/plain;charset=UTF-8";
+                }
+                case "csv" -> {
+                    data        = exportService.exportToCsv(documentModel);
+                    outName     = baseName + ".csv";
+                    contentType = "text/csv;charset=UTF-8";
+                }
+                case "html" -> {
+                    data        = exportService.exportToHtml(documentModel);
+                    outName     = baseName + ".html";
+                    contentType = "text/html;charset=UTF-8";
+                }
+                default -> {
+                    return ResponseEntity.badRequest().build();
+                }
+            }
 
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-            headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", title + ".pdf");
+            headers.setContentType(MediaType.parseMediaType(contentType));
+            headers.setContentDispositionFormData("attachment", outName);
 
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(pdfBytes);
+            return ResponseEntity.ok().headers(headers).body(data);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * POST /api/documents/export-pdf  (legacy — delegates to /export?format=pdf)
+     * Kept for backward compatibility with existing frontend calls.
+     */
+    @PostMapping("/export-pdf")
+    public ResponseEntity<byte[]> exportPdfLegacy(
+            @AuthenticationPrincipal UserPrincipal user,
+            @RequestBody Map<String, Object> documentModel) {
+        if (user == null) return ResponseEntity.status(401).build();
+        try {
+            String title = String.valueOf(documentModel.getOrDefault("title", "document"));
+            byte[] data  = exportService.exportToPdf(documentModel);
+
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", title + ".pdf");
+            return ResponseEntity.ok().headers(headers).body(data);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();

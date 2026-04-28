@@ -2,15 +2,23 @@ import React from 'react';
 import styles from './OfficeRibbon.module.css';
 import { SaveStatus, TextToolAction } from '../../types/document';
 import SaveStatusIndicator from './SaveStatusIndicator';
+import ExportMenu, { ExportOption } from './ExportMenu';
 
 interface HanwordRibbonProps {
   saveStatus: SaveStatus;
   lastSavedTime: string;
   onAction: (action: TextToolAction) => void;
   onExportPdf?: () => void;
+  fileName?: string;
+  token?: string;
+  getDocumentModel?: () => object | null;
+  exportOptions?: ExportOption[];
 }
 
-export default function HanwordRibbon({ saveStatus, lastSavedTime, onAction, onExportPdf }: HanwordRibbonProps) {
+export default function HanwordRibbon({
+  saveStatus, lastSavedTime, onAction, onExportPdf,
+  fileName, token, getDocumentModel, exportOptions,
+}: HanwordRibbonProps) {
   return (
     <div className={styles.ribbonRoot}>
       <div className={styles.tabRow}>
@@ -21,7 +29,16 @@ export default function HanwordRibbon({ saveStatus, lastSavedTime, onAction, onE
         <button className={styles.tab}>서식</button>
         <button className={styles.tab}>검토</button>
         <button className={styles.tab}>보기</button>
-        {onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>인쇄(PDF)</button>}
+        {exportOptions && fileName && getDocumentModel ? (
+          <ExportMenu
+            fileName={fileName}
+            token={token}
+            getDocumentModel={getDocumentModel}
+            options={exportOptions}
+          />
+        ) : (
+          onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>인쇄(PDF)</button>
+        )}
       </div>
 
       <div className={styles.toolRow}>

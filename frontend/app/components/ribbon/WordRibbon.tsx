@@ -2,15 +2,24 @@ import React from 'react';
 import styles from './OfficeRibbon.module.css';
 import { SaveStatus, TextToolAction } from '../../types/document';
 import SaveStatusIndicator from './SaveStatusIndicator';
+import ExportMenu, { ExportOption } from './ExportMenu';
 
 interface WordRibbonProps {
   saveStatus: SaveStatus;
   lastSavedTime: string;
   onAction: (action: TextToolAction) => void;
   onExportPdf?: () => void;
+  // ExportMenu props
+  fileName?: string;
+  token?: string;
+  getDocumentModel?: () => object | null;
+  exportOptions?: ExportOption[];
 }
 
-export default function WordRibbon({ saveStatus, lastSavedTime, onAction, onExportPdf }: WordRibbonProps) {
+export default function WordRibbon({
+  saveStatus, lastSavedTime, onAction, onExportPdf,
+  fileName, token, getDocumentModel, exportOptions,
+}: WordRibbonProps) {
   return (
     <div className={styles.ribbonRoot}>
       <div className={styles.tabRow}>
@@ -22,7 +31,16 @@ export default function WordRibbon({ saveStatus, lastSavedTime, onAction, onExpo
         <button className={styles.tab}>References</button>
         <button className={styles.tab}>Review</button>
         <button className={styles.tab}>View</button>
-        {onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>Print (PDF)</button>}
+        {exportOptions && fileName && getDocumentModel ? (
+          <ExportMenu
+            fileName={fileName}
+            token={token}
+            getDocumentModel={getDocumentModel}
+            options={exportOptions}
+          />
+        ) : (
+          onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>Print (PDF)</button>
+        )}
       </div>
 
       <div className={styles.toolRow}>

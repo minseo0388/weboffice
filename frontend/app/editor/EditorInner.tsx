@@ -10,6 +10,7 @@ import ExcelRibbon from '../components/ribbon/ExcelRibbon';
 import WordRibbon from '../components/ribbon/WordRibbon';
 import HanwordRibbon from '../components/ribbon/HanwordRibbon';
 import PowerPointRibbon from '../components/ribbon/PowerPointRibbon';
+import { ExportOption } from '../components/ribbon/ExportMenu';
 import {
   FileType,
   DocumentModel,
@@ -23,6 +24,26 @@ import {
   SpreadsheetCell,
 } from '../types/document';
 import styles from './editor.module.css';
+
+// ── Export option presets per file type ──────────────────────────────────────
+const TEXT_EXPORT_OPTIONS: ExportOption[] = [
+  { format: 'pdf',  label: 'PDF 문서',     icon: '📄' },
+  { format: 'docx', label: 'Word (.docx)', icon: '📝' },
+  { format: 'txt',  label: '텍스트',       icon: '📃' },
+  { format: 'html', label: 'HTML 페이지',  icon: '🌐' },
+];
+const EXCEL_EXPORT_OPTIONS: ExportOption[] = [
+  { format: 'pdf',  label: 'PDF 문서',       icon: '📄' },
+  { format: 'xlsx', label: 'Excel (.xlsx)', icon: '📊' },
+  { format: 'csv',  label: 'CSV',           icon: '📋' },
+  { format: 'html', label: 'HTML 페이지',   icon: '🌐' },
+];
+const PPT_EXPORT_OPTIONS: ExportOption[] = [
+  { format: 'pdf',  label: 'PDF 문서',            icon: '📄' },
+  { format: 'pptx', label: 'PowerPoint (.pptx)', icon: '📊' },
+  { format: 'html', label: 'HTML 프레젠테이션',   icon: '🌐' },
+];
+
 
 /**
  * EditorInner: The core orchestration component for the WebOffice suite.
@@ -582,6 +603,10 @@ export default function EditorInner() {
           lastSavedTime={lastSavedTime}
           onAction={handleSpreadsheetRibbonAction}
           onExportPdf={handleExportPdf}
+          fileName={fileName}
+          token={user?.token}
+          getDocumentModel={() => docModel}
+          exportOptions={EXCEL_EXPORT_OPTIONS}
         />
       ) : currentFileType === 'pptx' ? (
         <PowerPointRibbon
@@ -589,6 +614,10 @@ export default function EditorInner() {
           lastSavedTime={lastSavedTime}
           onAction={handlePresentationRibbonAction}
           onExportPdf={handleExportPdf}
+          fileName={fileName}
+          token={user?.token}
+          getDocumentModel={() => docModel}
+          exportOptions={PPT_EXPORT_OPTIONS}
         />
       ) : currentFileType === 'hwp' || currentFileType === 'hwpx' ? (
         <HanwordRibbon
@@ -596,6 +625,10 @@ export default function EditorInner() {
           lastSavedTime={lastSavedTime}
           onAction={handleTextRibbonAction}
           onExportPdf={handleExportPdf}
+          fileName={fileName}
+          token={user?.token}
+          getDocumentModel={() => docModel}
+          exportOptions={TEXT_EXPORT_OPTIONS}
         />
       ) : (
         <WordRibbon
@@ -603,6 +636,10 @@ export default function EditorInner() {
           lastSavedTime={lastSavedTime}
           onAction={handleTextRibbonAction}
           onExportPdf={handleExportPdf}
+          fileName={fileName}
+          token={user?.token}
+          getDocumentModel={() => docModel}
+          exportOptions={TEXT_EXPORT_OPTIONS}
         />
       )}
 

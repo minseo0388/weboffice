@@ -39,6 +39,9 @@ dependencies {
     // Apache Commons for utility functions
     implementation("org.apache.commons:commons-lang3:3.14.0")
 
+    // OpenPDF — PDF generation (LGPL/MPL, Apache-POI-friendly)
+    implementation("com.github.librepdf:openpdf:1.3.30")
+
     // Oracle OCI Object Storage SDK
     implementation("com.oracle.oci.sdk:oci-java-sdk-objectstorage:3.35.0")
     implementation("com.oracle.oci.sdk:oci-java-sdk-common:3.35.0")

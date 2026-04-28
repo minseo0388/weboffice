@@ -2,15 +2,23 @@ import React, { useRef } from 'react';
 import styles from './OfficeRibbon.module.css';
 import { SaveStatus, PresentationToolAction } from '../../types/document';
 import SaveStatusIndicator from './SaveStatusIndicator';
+import ExportMenu, { ExportOption } from './ExportMenu';
 
 interface PowerPointRibbonProps {
   saveStatus: SaveStatus;
   lastSavedTime: string;
   onAction: (action: PresentationToolAction) => void;
   onExportPdf?: () => void;
+  fileName?: string;
+  token?: string;
+  getDocumentModel?: () => object | null;
+  exportOptions?: ExportOption[];
 }
 
-export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, onExportPdf }: PowerPointRibbonProps) {
+export default function PowerPointRibbon({
+  saveStatus, lastSavedTime, onAction, onExportPdf,
+  fileName, token, getDocumentModel, exportOptions,
+}: PowerPointRibbonProps) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReplaceInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -70,7 +78,16 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
         <button className={styles.tab}>Slide Show</button>
         <button className={styles.tab}>Review</button>
         <button className={styles.tab}>View</button>
-        {onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>Print (PDF)</button>}
+        {exportOptions && fileName && getDocumentModel ? (
+          <ExportMenu
+            fileName={fileName}
+            token={token}
+            getDocumentModel={getDocumentModel}
+            options={exportOptions}
+          />
+        ) : (
+          onExportPdf && <button className={styles.exportPdfBtn} onClick={onExportPdf}>Print (PDF)</button>
+        )}
       </div>
 
       <div className={styles.toolRow}>
