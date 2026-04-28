@@ -23,8 +23,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.InputStream;
 import java.util.*;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 /**
  * Converts HWP/HWPX to a structured JSON model for the web editor.
@@ -58,6 +56,7 @@ public class DocumentController {
     private final FontMappingService fontMappingService;
     private final DocumentServiceFactory documentServiceFactory;
     private final StorageService storageService;
+    @SuppressWarnings("unused") // reserved for future HWP/DOCX save operations
     private final DocumentSaveService documentSaveService;
     private final ExportService exportService;
     private final HwpxService hwpxService;
@@ -223,10 +222,13 @@ public class DocumentController {
      *
      * Request body:
      * {
-     *   "format": "pdf" | "docx" | "xlsx" | "pptx" | "txt" | "csv" | "html",
-     *   "fileName": "original-filename.hwp",
+     *   "format": "pdf" | "docx" | "hwpx" | "xlsx" | "pptx" | "txt" | "csv" | "html",
+     *   "fileName": "original-filename.hwpx",
      *   "documentModel": { ... }
      * }
+     *
+     * HWPX: uses HwpxService (hwpxlib 1.0.8) — BlankFileMaker + HWPXWriter
+     * HWP:  viewer-only, not exportable back to HWP binary
      */
     @PostMapping("/export")
     public ResponseEntity<byte[]> exportDocument(
@@ -398,97 +400,7 @@ public class DocumentController {
         return map;
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // HWPX XML parsing (hwpxlib — neolord0)
-    // Note: hwpxlib dependency added to build.gradle
-    // HWPX is a ZIP container with XML files inside (document.xml, styles.xml, etc.)
-    // ─────────────────────────────────────────────────────────────────
-    private ResponseEntity<Map<String, Object>> parseHwpx(MultipartFile file) throws Exception {
-        java.nio.file.Path tempPath = java.nio.file.Files.createTempFile("hc_hwpx_", ".hwpx");
-        File temp = tempPath.toFile();
-        try {
-            file.transferTo(tempPath);
 
-            /**
-             * HWPX Structure:
-             * - META-INF/
-             * - Contents/
-             *   - content.xml (main document content)
-             *   - styles.xml
-             *   - etc.
-             * 
-             * For now, we extract text from content.xml as a baseline.
-             * Full hwpxlib integration will provide complete formatting in Phase 2.
-             */
-            Map<String, Object> model = new LinkedHashMap<>();
-            model.put("title", file.getOriginalFilename());
-            model.put("format", "hwpx");
-            model.put("fileType", "hwpx");
-
-            List<Map<String, Object>> sections = new ArrayList<>();
-            List<Map<String, Object>> paragraphs = new ArrayList<>();
-
-            try (ZipInputStream zis = new ZipInputStream(new java.io.FileInputStream(temp))) {
-                ZipEntry entry;
-                StringBuilder extractedText = new StringBuilder();
-
-                while ((entry = zis.getNextEntry()) != null) {
-                    if (entry.getName().equals("Contents/content.xml")) {
-                        byte[] buffer = new byte[8192];
-                        int length;
-                        while ((length = zis.read(buffer)) != -1) {
-                            extractedText.append(new String(buffer, 0, length, "UTF-8"));
-                        }
-                        break;  // content.xml found, exit loop
-                    }
-                }
-
-                if (extractedText.length() > 0) {
-                    // Extract text from XML (simplified: remove XML tags)
-                    String text = extractedText.toString()
-                            .replaceAll("<[^>]+>", "")  // Remove all XML tags
-                            .replaceAll("\\s+", " ")    // Normalize whitespace
-                            .trim();
-
-                    if (!text.isEmpty()) {
-                        paragraphs.add(Map.of(
-                                "text", text,
-                                "fontName", "NanumGothic",
-                                "fontSize", 14,
-                                "bold", false,
-                                "italic", false,
-                                "underline", false,
-                                "align", "left"
-                        ));
-                    }
-                }
-            }
-
-            if (paragraphs.isEmpty()) {
-                paragraphs.add(Map.of(
-                        "text", "HWPX 파일이 업로드됐습니다. 형식 파싱 준비 중입니다.",
-                        "fontName", "NanumGothic",
-                        "fontSize", 14,
-                        "bold", false,
-                        "italic", false,
-                        "underline", false,
-                        "align", "left"
-                ));
-            }
-
-            sections.add(Map.of("paragraphs", paragraphs));
-
-            model.put("sectionCount", sections.size());
-            model.put("sections", sections);
-            model.put("fontMap", fontMappingService.getFullMap());
-            model.put("note", "HWPX 파일은 기본 텍스트 추출만 지원합니다. 전체 형식 지원은 Q2에 예정되어 있습니다.");
-
-            return ResponseEntity.ok(model);
-
-        } finally {
-            temp.delete();
-        }
-    }
 
     /**
      * GET /api/documents/fontmap
