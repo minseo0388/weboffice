@@ -5,6 +5,7 @@ import com.cloud.service.DocumentSaveService;
 import com.cloud.service.DocumentServiceFactory;
 import com.cloud.service.ExportService;
 import com.cloud.service.FontMappingService;
+import com.cloud.service.HwpService;
 import com.cloud.service.HwpxService;
 import com.cloud.service.StorageService;
 import kr.dogfoot.hwplib.object.HWPFile;
@@ -59,6 +60,7 @@ public class DocumentController {
     @SuppressWarnings("unused") // reserved for future HWP/DOCX save operations
     private final DocumentSaveService documentSaveService;
     private final ExportService exportService;
+    private final HwpService hwpService;
     private final HwpxService hwpxService;
 
     @Autowired
@@ -68,6 +70,7 @@ public class DocumentController {
             StorageService storageService,
             DocumentSaveService documentSaveService,
             ExportService exportService,
+            HwpService hwpService,
             HwpxService hwpxService
     ) {
         this.fontMappingService = fontMappingService;
@@ -75,6 +78,7 @@ public class DocumentController {
         this.storageService = storageService;
         this.documentSaveService = documentSaveService;
         this.exportService = exportService;
+        this.hwpService  = hwpService;
         this.hwpxService = hwpxService;
     }
 
@@ -92,11 +96,10 @@ public class DocumentController {
         String lower = originalName.toLowerCase();
         try {
             if (lower.endsWith(".hwp")) {
-                // HWP binary — viewer mode only
-                Map<String, Object> model = new LinkedHashMap<>(parseHwp(file).getBody() != null
-                        ? Objects.requireNonNull(parseHwp(file).getBody()) : Map.of());
-                model.put("readOnly", true);
-                model.put("readOnlyReason", "HWP 바이너리 형식은 뼏어보기 전용입니다. 수정하려면 HWPX로 변환하세요.");
+                // HWP binary — HwpService로 완전 파싱 (서식 포함)
+                byte[] bytes = file.getBytes();
+                Map<String, Object> model = hwpService.parseHwpFromBytes(bytes, originalName);
+                model.put("fontMap", fontMappingService.getFullMap());
                 return ResponseEntity.ok(model);
             } else if (lower.endsWith(".hwpx")) {
                 // HWPX — full parsing via HwpxService (hwpxlib)
@@ -159,49 +162,56 @@ public class DocumentController {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> documentModel = (Map<String, Object>) body.get("documentModel");
                 if (documentModel == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "documentModel is required"));
-            }
+                    return ResponseEntity.badRequest().body(Map.of("error", "documentModel is required"));
+                }
 
-                    String format = documentServiceFactory.resolveFormat(fileName);
+                String format = documentServiceFactory.resolveFormat(fileName);
 
-                    if ("hwp".equals(format)) {
-                        return ResponseEntity.status(400).body(Map.of(
-                            "error", "HWP 파일은 뼏어보기 전용입니다. 내보내기 메뉴에서 HWPX 또는 DOCX로 다운로드하세요.",
-                            "readOnly", true
-                        ));
-                    }
+                // ── HWP binary: hwpService로 완전 저장 ───────────────────────
+                if ("hwp".equals(format)) {
+                    InputStream originalStream = storageService.downloadFile(user, fileName);
+                    byte[] originalBytes = originalStream.readAllBytes();
+                    byte[] updatedBytes  = hwpService.saveHwp(originalBytes, documentModel);
+                    storageService.uploadFile(user, fileName, updatedBytes);
+                    return ResponseEntity.ok(Map.of(
+                        "success",    true,
+                        "fileName",   fileName,
+                        "fileType",   "hwp",
+                        "message",    "HWP 저장 완료.",
+                        "savedBytes", updatedBytes.length
+                    ));
+                }
 
-                    if ("hwpx".equals(format)) {
-                        @SuppressWarnings("unchecked")
-                        List<Map<String, Object>> sections = (List<Map<String, Object>>) documentModel.get("sections");
-                        if (sections == null) {
-                            return ResponseEntity.badRequest().body(Map.of("error", "documentModel.sections is required for HWPX"));
-                        }
+                // ── HWPX: hwpxlib 완전 저장 ───────────────────────────────
+                if ("hwpx".equals(format)) {
+                    InputStream originalStream = storageService.downloadFile(user, fileName);
+                    byte[] originalBytes = originalStream.readAllBytes();
+                    byte[] updatedBytes  = hwpxService.saveHwpx(originalBytes, documentModel);
+                    storageService.uploadFile(user, fileName, updatedBytes);
+                    return ResponseEntity.ok(Map.of(
+                        "success",    true,
+                        "fileName",   fileName,
+                        "fileType",   "hwpx",
+                        "message",    "HWPX 저장 완료.",
+                        "savedBytes", updatedBytes.length
+                    ));
+                }
 
-                        // Download original HWPX from storage, save via HwpxService
-                        InputStream originalStream = storageService.downloadFile(user, fileName);
-                        byte[] originalBytes = originalStream.readAllBytes();
-                        byte[] updatedBytes  = hwpxService.saveHwpx(originalBytes, documentModel);
-                        storageService.uploadFile(user, fileName, updatedBytes);
+                // ── docx, doc, xlsx, xls, pptx: Apache POI 저장 ──────────
+                if (documentServiceFactory.isMicrosoftFormat(format)) {
+                    StorageService.SaveResult result = storageService.saveEditorContent(user, fileName, documentModel);
+                    return ResponseEntity.ok(Map.of(
+                        "success",    true,
+                        "fileName",   result.fileName(),
+                        "fileType",   result.fileType(),
+                        "message",    "저장 완료 (" + format.toUpperCase() + ").",
+                        "savedBytes", result.savedBytes()
+                    ));
+                }
 
-                        return ResponseEntity.ok(Map.of(
-                            "success", true,
-                            "fileName", fileName,
-                            "fileType", format,
-                            "message", "HWPX 저장 완료.",
-                            "savedBytes", updatedBytes.length
-                        ));
-                    }
-
-                StorageService.SaveResult response = storageService.saveEditorContent(user, fileName, documentModel);
-
-            return ResponseEntity.ok(Map.of(
-                        "success", true,
-                    "fileName", response.fileName(),
-                    "fileType", response.fileType(),
-                    "message", "Document saved successfully.",
-                    "savedBytes", response.savedBytes()
-            ));
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "지원하지 않는 저장 형식: " + format
+                ));
 
             } catch (IllegalStateException e) {
                 return ResponseEntity.status(413).body(
@@ -258,7 +268,8 @@ public class DocumentController {
                     outName     = baseName + ".pdf";
                     contentType = "application/pdf";
                 }
-                case "docx" -> {
+                case "docx", "doc" -> {
+                    // doc → docx로 업그레이드 내보내기
                     data        = exportService.exportToDocx(documentModel);
                     outName     = baseName + ".docx";
                     contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -268,7 +279,8 @@ public class DocumentController {
                     outName     = baseName + ".hwpx";
                     contentType = "application/hwpx+zip";
                 }
-                case "xlsx" -> {
+                case "xlsx", "xls" -> {
+                    // xls → xlsx로 업그레이드 내보내기
                     data        = exportService.exportToXlsx(documentModel);
                     outName     = baseName + ".xlsx";
                     contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

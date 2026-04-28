@@ -683,24 +683,6 @@ export default function EditorInner() {
             getDocumentModel={() => docModel}
             exportOptions={currentFileType === 'hwp' ? HWP_EXPORT_OPTIONS : HWPX_EXPORT_OPTIONS}
           />
-          {readOnly && (
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'rgba(15,16,30,0.6)',
-              backdropFilter: 'blur(1px)',
-              zIndex: 50,  /* 내보내기 드롭다운은 z-index 100으로 이 위에 렌더됨 */
-              cursor: 'not-allowed',
-            }}>
-              <div style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%,-50%)',
-                color: '#f87171', fontSize: '12px', fontWeight: 600,
-                pointerEvents: 'none',
-              }}>
-                🔒 HWP는 뷰어 전용 — 내보내기(→)로 다운로드하세요
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <WordRibbon

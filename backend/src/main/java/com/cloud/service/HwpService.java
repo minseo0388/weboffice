@@ -1,0 +1,361 @@
+package com.cloud.service;
+
+import kr.dogfoot.hwplib.object.HWPFile;
+import kr.dogfoot.hwplib.object.bodytext.Section;
+import kr.dogfoot.hwplib.object.bodytext.paragraph.Paragraph;
+import kr.dogfoot.hwplib.object.bodytext.paragraph.charshape.ParaCharShape;
+import kr.dogfoot.hwplib.object.bodytext.paragraph.text.HWPChar;
+import kr.dogfoot.hwplib.object.bodytext.paragraph.text.HWPCharNormal;
+import kr.dogfoot.hwplib.object.docinfo.CharShape;
+import kr.dogfoot.hwplib.object.docinfo.FaceName;
+import kr.dogfoot.hwplib.object.docinfo.ParaShape;
+import kr.dogfoot.hwplib.object.docinfo.charshape.UnderLineSort;
+import kr.dogfoot.hwplib.object.docinfo.parashape.Alignment;
+import kr.dogfoot.hwplib.reader.HWPReader;
+import kr.dogfoot.hwplib.writer.HWPWriter;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * HwpService — hwplib을 사용한 HWP 바이너리 파일 읽기/저장
+ *
+ * hwplib API 요약:
+ *   HWPFile.getDocInfo().getCharShapeList() — 문자 서식 목록
+ *   HWPFile.getDocInfo().getParaShapeList() — 문단 서식 목록
+ *   HWPFile.getDocInfo().getHangulFaceNameList() — 한글 폰트 목록
+ *   CharShape.getProperty().setBold/setItalic/setSuperScript/setSubScript/setStrikeLine(boolean)
+ *   CharShape.getProperty().setUnderLineSort(UnderLineSort.Bottom or None)
+ *   CharShape.setBaseSize(pt * 100)
+ *   CharShape.getCharColor().setR/G/B(short)
+ *   CharShape.getFaceNameIds().setForAll(int fontIdx)
+ *   CharShape.getCharSpaces().setForAll(byte)     — 자간
+ *   CharShape.getRatios().setForAll(byte)         — 장평
+ *   ParaShape.getProperty1().setAlignment(Alignment.Left/Center/Right/Justify)
+ *   ParaShape.setLineSpace(int 퍼센트)
+ *   ParaShape.setTopParaSpace / setBottomParaSpace
+ */
+@Service
+public class HwpService {
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Parse HWP → JSON model (문자 서식 포함)
+    // ══════════════════════════════════════════════════════════════════════
+
+    public Map<String, Object> parseHwpFromBytes(byte[] bytes, String title) throws Exception {
+        File temp = File.createTempFile("hc_hwp_r_", ".hwp");
+        try {
+            Files.write(temp.toPath(), bytes);
+            HWPFile hwp = HWPReader.fromFile(temp.getAbsolutePath());
+            return buildModel(hwp, title);
+        } finally {
+            temp.delete();
+        }
+    }
+
+    private Map<String, Object> buildModel(HWPFile hwp, String title) {
+        List<Map<String, Object>> sections = new ArrayList<>();
+        List<Section> sectionList = hwp.getBodyText().getSectionList();
+        List<CharShape>  csLst = hwp.getDocInfo().getCharShapeList();
+        List<ParaShape>  psLst = hwp.getDocInfo().getParaShapeList();
+
+        for (Section section : sectionList) {
+            List<Map<String, Object>> paragraphs = new ArrayList<>();
+            for (int pi = 0; pi < section.getParagraphCount(); pi++) {
+                Paragraph para = section.getParagraph(pi);
+                paragraphs.add(extractPara(para, csLst, psLst));
+            }
+            Map<String, Object> secMap = new java.util.LinkedHashMap<>();
+            secMap.put("paragraphs", paragraphs);
+            sections.add(secMap);
+        }
+
+        Map<String, Object> model = new java.util.LinkedHashMap<>();
+        model.put("title",        title);
+        model.put("format",       "hwp");
+        model.put("fileType",     "hwp");
+        model.put("sectionCount", sections.size());
+        model.put("sections",     sections);
+        return model;
+    }
+
+    private Map<String, Object> extractPara(Paragraph para,
+                                             List<CharShape> csList,
+                                             List<ParaShape> psList) {
+        // ── 텍스트 추출 ───────────────────────────────────────────────────
+        StringBuilder sb = new StringBuilder();
+        if (para.getText() != null) {
+            for (HWPChar ch : para.getText().getCharList()) {
+                if (ch instanceof HWPCharNormal) {
+                    char c = (char) ((HWPCharNormal) ch).getCode();
+                    if (c != '\r' && c != '\n' && c != 0) sb.append(c);
+                }
+            }
+        }
+
+        // ── 문자 서식 ─────────────────────────────────────────────────────
+        String  fontName   = "NanumGothic";
+        int     fontSize   = 10;
+        boolean bold       = false, italic     = false;
+        boolean underline  = false, strike     = false;
+        boolean sup        = false, sub        = false;
+        String  color      = "#000000";
+        double  letterSpc  = 0.0;
+        int     scaleX     = 100;
+
+        try {
+            ParaCharShape pcs = para.getCharShape();
+            if (pcs != null && !pcs.getPositonShapeIdPairList().isEmpty()) {
+                long csId = pcs.getPositonShapeIdPairList().get(0).getShapeId();
+                if (csId >= 0 && csId < csList.size()) {
+                    CharShape cs = csList.get((int) csId);
+                    fontSize  = cs.getBaseSize() / 100;
+                    bold      = cs.getProperty().isBold();
+                    italic    = cs.getProperty().isItalic();
+                    underline = cs.getProperty().getUnderLineSort() != UnderLineSort.None;
+                    strike    = cs.getProperty().isStrikeLine();
+                    sup       = cs.getProperty().isSuperScript();
+                    sub       = cs.getProperty().isSubScript();
+                    // 색상
+                    int r = cs.getCharColor().getR();
+                    int g = cs.getCharColor().getG();
+                    int b = cs.getCharColor().getB();
+                    color = String.format("#%02X%02X%02X", r, g, b);
+                    // 자간/장평
+                    letterSpc = cs.getCharSpaces().getHangul() / 100.0;
+                    scaleX    = cs.getRatios().getHangul();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // ── 문단 서식 ─────────────────────────────────────────────────────
+        String align       = "left";
+        double lineSpace   = 1.6;
+        double spaceBefore = 0, spaceAfter = 0;
+
+        try {
+            long psIdx = para.getHeader().getParaShapeId();
+            if (psIdx >= 0 && psIdx < psList.size()) {
+                ParaShape ps = psList.get((int) psIdx);
+                Alignment al = ps.getProperty1().getAlignment();
+                align = switch (al) {
+                    case Center    -> "center";
+                    case Right     -> "right";
+                    case Justify   -> "justify";
+                    case Distribute, Divide -> "distribute";
+                    default        -> "left";
+                };
+                lineSpace   = ps.getLineSpace() / 100.0;
+                spaceBefore = ps.getTopParaSpace()    / 100.0;
+                spaceAfter  = ps.getBottomParaSpace() / 100.0;
+            }
+        } catch (Exception ignored) {}
+
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("text",                   sb.toString());
+        m.put("fontName",               fontName);
+        m.put("fontSize",               Math.max(fontSize, 1));
+        m.put("bold",                   bold);
+        m.put("italic",                 italic);
+        m.put("underline",              underline);
+        m.put("strikethrough",          strike);
+        m.put("superscript",            sup);
+        m.put("subscript",              sub);
+        m.put("textColor",              color);
+        m.put("letterSpacing",          letterSpc);
+        m.put("textScaleX",             scaleX);
+        m.put("align",                  align);
+        m.put("lineSpacing",            lineSpace);
+        m.put("paragraphSpacingBefore", spaceBefore);
+        m.put("paragraphSpacingAfter",  spaceAfter);
+        return m;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Save HWP — 원본 구조 유지, 텍스트+서식 업데이트
+    // ══════════════════════════════════════════════════════════════════════
+
+    @SuppressWarnings("unchecked")
+    public byte[] saveHwp(byte[] originalBytes, Map<String, Object> docModel) throws Exception {
+        File temp = File.createTempFile("hc_hwp_w_", ".hwp");
+        try {
+            Files.write(temp.toPath(), originalBytes);
+            HWPFile hwp = HWPReader.fromFile(temp.getAbsolutePath());
+            List<Map<String, Object>> sections =
+                (List<Map<String, Object>>) docModel.get("sections");
+            if (sections == null) return toBytes(hwp);
+
+            List<Section> secList = hwp.getBodyText().getSectionList();
+            for (int si = 0; si < secList.size() && si < sections.size(); si++) {
+                Section sec = secList.get(si);
+                List<Map<String, Object>> parasData =
+                    (List<Map<String, Object>>) sections.get(si).get("paragraphs");
+                if (parasData == null) continue;
+
+                for (int pi = 0; pi < sec.getParagraphCount() && pi < parasData.size(); pi++) {
+                    Paragraph para   = sec.getParagraph(pi);
+                    Map<String, Object> pData = parasData.get(pi);
+                    applyParaText(hwp, para, pData);
+                    applyParaFormatting(hwp, para, pData, si, pi);
+                }
+            }
+            return toBytes(hwp);
+        } finally {
+            temp.delete();
+        }
+    }
+
+    /** 문단 텍스트 교체 */
+    private void applyParaText(HWPFile hwp, Paragraph para, Map<String, Object> d)
+            throws Exception {
+        String newText = d.get("text") instanceof String s ? s : "";
+        if (para.getText() == null) para.createText();
+
+        // Lossless: if the paragraph contains control chars (pictures/fields/etc),
+        // do not wipe them by clearing the entire char list.
+        boolean hasNonNormal = false;
+        for (HWPChar ch : para.getText().getCharList()) {
+            if (!(ch instanceof HWPCharNormal)) {
+                hasNonNormal = true;
+                break;
+            }
+        }
+
+        if (hasNonNormal) {
+            // Preserve complex paragraph structure; editor currently doesn't support
+            // safe full replacement when controls are present.
+            return;
+        }
+
+        para.getText().getCharList().clear();
+        if (!newText.isEmpty()) para.getText().addString(newText);
+    }
+
+    /** 문단 서식 적용 (CharShape + ParaShape 업데이트) */
+    private void applyParaFormatting(HWPFile hwp, Paragraph para,
+                                     Map<String, Object> d, int si, int pi) {
+        // ── CharShape ────────────────────────────────────────────────────
+        CharShape cs = ensureCharShape(hwp, para, si, pi);
+
+        int fontSize = d.get("fontSize") instanceof Number n ? n.intValue() : 10;
+        cs.setBaseSize(fontSize * 100);
+
+        cs.getProperty().setBold(Boolean.TRUE.equals(d.get("bold")));
+        cs.getProperty().setItalic(Boolean.TRUE.equals(d.get("italic")));
+        cs.getProperty().setSuperScript(Boolean.TRUE.equals(d.get("superscript")));
+        cs.getProperty().setSubScript(Boolean.TRUE.equals(d.get("subscript")));
+        cs.getProperty().setStrikeLine(Boolean.TRUE.equals(d.get("strikethrough")));
+        cs.getProperty().setUnderLineSort(
+            Boolean.TRUE.equals(d.get("underline")) ? UnderLineSort.Bottom : UnderLineSort.None);
+
+        // 색상
+        if (d.get("textColor") instanceof String tc && tc.startsWith("#") && tc.length() == 7) {
+            try {
+                int r = Integer.parseInt(tc.substring(1, 3), 16);
+                int g = Integer.parseInt(tc.substring(3, 5), 16);
+                int b = Integer.parseInt(tc.substring(5, 7), 16);
+                cs.getCharColor().setR((short) r);
+                cs.getCharColor().setG((short) g);
+                cs.getCharColor().setB((short) b);
+            } catch (Exception ignored) {}
+        }
+
+        // 폰트 (한글 폰트 목록에서 ID 찾거나 새로 추가)
+        if (d.get("fontName") instanceof String fn && !fn.isBlank()) {
+            int fontId = ensureFontId(hwp, fn);
+            cs.getFaceNameIds().setForAll(fontId);
+        }
+
+        // 자간 (CharSpaces: byte, -50~50%)
+        if (d.get("letterSpacing") instanceof Number ls) {
+            byte spc = (byte) Math.max(-50, Math.min(50, (int)(ls.doubleValue() * 100)));
+            cs.getCharSpaces().setForAll(spc);
+        }
+
+        // 장평 (Ratios: byte, 50~200%)
+        if (d.get("textScaleX") instanceof Number sx) {
+            byte r = (byte) Math.max(50, Math.min(200, sx.intValue()));
+            cs.getRatios().setForAll(r);
+        }
+
+        // ── ParaShape ────────────────────────────────────────────────────
+        ParaShape ps = ensureParaShape(hwp, para, si, pi);
+
+        if (d.get("align") instanceof String align) {
+            Alignment a = switch (align) {
+                case "center"     -> Alignment.Center;
+                case "right"      -> Alignment.Right;
+                case "justify"    -> Alignment.Justify;
+                case "distribute" -> Alignment.Distribute;
+                default           -> Alignment.Left;
+            };
+            ps.getProperty1().setAlignment(a);
+        }
+        if (d.get("lineSpacing") instanceof Number ls)
+            ps.setLineSpace((int)(ls.doubleValue() * 100));
+        if (d.get("paragraphSpacingBefore") instanceof Number sb)
+            ps.setTopParaSpace((int)(sb.doubleValue() * 100));
+        if (d.get("paragraphSpacingAfter") instanceof Number sa)
+            ps.setBottomParaSpace((int)(sa.doubleValue() * 100));
+    }
+
+    // ── Helper: CharShape 확보 ────────────────────────────────────────────
+
+    private CharShape ensureCharShape(HWPFile hwp, Paragraph para, int si, int pi) {
+        // 기존 CharShape ID를 참조하거나 새로 추가
+        List<CharShape> csList = hwp.getDocInfo().getCharShapeList();
+        if (para.getCharShape() != null
+                && !para.getCharShape().getPositonShapeIdPairList().isEmpty()) {
+            long csId = para.getCharShape().getPositonShapeIdPairList().get(0).getShapeId();
+            if (csId >= 0 && csId < csList.size()) {
+                return csList.get((int) csId);
+            }
+        }
+        // 새 CharShape 추가
+        CharShape cs = hwp.getDocInfo().addNewCharShape();
+        int newId = csList.size() - 1;
+        if (para.getCharShape() == null) para.createCharShape();
+        para.getCharShape().getPositonShapeIdPairList().clear();
+        para.getCharShape().addParaCharShape(0, newId);
+        return cs;
+    }
+
+    // ── Helper: ParaShape 확보 ───────────────────────────────────────────
+
+    private ParaShape ensureParaShape(HWPFile hwp, Paragraph para, int si, int pi) {
+        List<ParaShape> psList = hwp.getDocInfo().getParaShapeList();
+        long psId = para.getHeader().getParaShapeId();
+        if (psId >= 0 && psId < psList.size()) {
+            return psList.get((int) psId);
+        }
+        ParaShape ps = hwp.getDocInfo().addNewParaShape();
+        int newId = psList.size() - 1;
+        para.getHeader().setParaShapeId(newId);
+        return ps;
+    }
+
+    // ── Helper: 폰트 ID 확보 ─────────────────────────────────────────────
+
+    private int ensureFontId(HWPFile hwp, String fontName) {
+        List<FaceName> list = hwp.getDocInfo().getHangulFaceNameList();
+        for (int i = 0; i < list.size(); i++) {
+            if (fontName.equals(list.get(i).getName())) return i;
+        }
+        FaceName fn = hwp.getDocInfo().addNewHangulFaceName();
+        fn.setName(fontName);
+        return list.size() - 1;
+    }
+
+    // ── HWPFile → byte[] ──────────────────────────────────────────────────
+
+    private byte[] toBytes(HWPFile hwp) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        HWPWriter.toStream(hwp, baos);
+        return baos.toByteArray();
+    }
+}

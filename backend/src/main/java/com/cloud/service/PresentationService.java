@@ -40,6 +40,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class PresentationService {
 
+    private static final String SHAPE_ID_KEY = "shapeId";
+
     /**
      * Parse PPTX file and extract slide data into unified JSON model.
      */
@@ -109,6 +111,8 @@ public class PresentationService {
 
     private Map<String, Object> extractImageShape(XSLFPictureShape pictureShape) {
         Map<String, Object> shapeData = new LinkedHashMap<>();
+        shapeData.put(SHAPE_ID_KEY, pictureShape.getShapeId());
+        shapeData.put("shapeName", pictureShape.getShapeName());
         shapeData.put("type", "image");
         shapeData.put("text", "");
 
@@ -140,6 +144,8 @@ public class PresentationService {
 
     private Map<String, Object> extractTextOrAutoShape(XSLFTextShape textShape) {
         Map<String, Object> shapeData = new LinkedHashMap<>();
+        shapeData.put(SHAPE_ID_KEY, textShape.getShapeId());
+        shapeData.put("shapeName", textShape.getShapeName());
         String type = "text";
         if (textShape instanceof XSLFAutoShape autoShape) {
             type = mapFromPoiShapeType(autoShape.getShapeType());
@@ -214,129 +220,224 @@ public class PresentationService {
      * text content in existing shapes.
      */
     public byte[] savePptx(Map<String, Object> model, byte[] originalPptxBytes) throws Exception {
-        InputStream inputStream = new java.io.ByteArrayInputStream(originalPptxBytes);
-        XMLSlideShow slideShow = new XMLSlideShow(inputStream);
-        
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> slides = (List<Map<String, Object>>) model.get("slides");
-        
-        if (slides != null) {
-            // Remove extra slides
-            while (slideShow.getSlides().size() > slides.size()) {
-                slideShow.removeSlide(slideShow.getSlides().size() - 1);
-            }
-            
-            // Add missing slides
-            while (slideShow.getSlides().size() < slides.size()) {
-                slideShow.createSlide();
-            }
+        try (InputStream inputStream = new java.io.ByteArrayInputStream(originalPptxBytes);
+             XMLSlideShow slideShow = new XMLSlideShow(inputStream)) {
 
-            // Update all slides
-            int slideIndex = 0;
-            for (XSLFSlide slide : slideShow.getSlides()) {
-                Map<String, Object> slideData = slides.get(slideIndex);
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> shapes = (List<Map<String, Object>>) slideData.get("shapes");
-                
-                if (shapes != null) {
-                    // Remove existing shapes safely by clearing the slide
-                    // Wait, clearing the slide removes all content. Let's just create a new list of text shapes to keep and remove the rest.
-                    List<XSLFShape> existingShapes = new ArrayList<>(slide.getShapes());
-                    for (XSLFShape shape : existingShapes) {
-                        slide.removeShape(shape);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> slides = (List<Map<String, Object>>) model.get("slides");
+
+            if (slides != null) {
+                // Keep slide count consistent with the JSON model.
+                while (slideShow.getSlides().size() > slides.size()) {
+                    slideShow.removeSlide(slideShow.getSlides().size() - 1);
+                }
+                while (slideShow.getSlides().size() < slides.size()) {
+                    slideShow.createSlide();
+                }
+
+                for (int slideIndex = 0; slideIndex < slides.size(); slideIndex++) {
+                    XSLFSlide slide = slideShow.getSlides().get(slideIndex);
+                    Map<String, Object> slideData = slides.get(slideIndex);
+
+                    // Slide meta
+                    if (slideData.get("isHidden") instanceof Boolean isHidden) {
+                        slide.setHidden(isHidden);
                     }
 
-                    // Re-create all shapes based on the JSON model
-                    for (Map<String, Object> shapeData : shapes) {
-                        String type = (String) shapeData.getOrDefault("type", "text");
-                        Number x = (Number) shapeData.get("x");
-                        Number y = (Number) shapeData.get("y");
-                        Number w = (Number) shapeData.get("width");
-                        Number h = (Number) shapeData.get("height");
-
-                        java.awt.geom.Rectangle2D.Double anchor = null;
-                        if (x != null && y != null && w != null && h != null) {
-                            anchor = new java.awt.geom.Rectangle2D.Double(
-                                x.doubleValue(), y.doubleValue(), w.doubleValue(), h.doubleValue()
-                            );
-                        }
-
-                        if ("image".equals(type)) {
-                            String imageUrl = (String) shapeData.get("imageUrl");
-                            if (imageUrl != null && !imageUrl.isBlank()) {
-                                byte[] imageBytes = resolveImageBytes(imageUrl);
-                                PictureData.PictureType pictureType = resolvePictureType(imageUrl);
-                                XSLFPictureData pictureData = slideShow.addPicture(imageBytes, pictureType);
-                                XSLFPictureShape pictureShape = slide.createPicture(pictureData);
-                                if (anchor != null) {
-                                    pictureShape.setAnchor(anchor);
+                    String notesText = slideData.get("notes") instanceof String s ? s : null;
+                    if (notesText != null && !notesText.isBlank()) {
+                        XSLFNotes notes = slide.getNotes();
+                        if (notes != null) {
+                            for (XSLFShape shape : notes.getShapes()) {
+                                if (shape instanceof XSLFTextShape) {
+                                    ((XSLFTextShape) shape).setText(notesText);
+                                    break;
                                 }
                             }
-                            continue;
-                        }
-
-                        XSLFAutoShape autoShape = slide.createAutoShape();
-                        autoShape.setShapeType(mapToPoiShapeType(type));
-
-                        if ("text".equals(type)) {
-                            autoShape.setFillColor(null);
-                            autoShape.setLineColor(null);
-                        } else {
-                            String backgroundColor = (String) shapeData.get("backgroundColor");
-                            String borderColor = (String) shapeData.get("borderColor");
-                            Number borderWidth = (Number) shapeData.get("borderWidth");
-
-                            if (backgroundColor != null) {
-                                autoShape.setFillColor(parseHexColor(backgroundColor));
-                            }
-                            if (borderColor != null) {
-                                autoShape.setLineColor(parseHexColor(borderColor));
-                            }
-                            if (borderWidth != null) {
-                                autoShape.setLineWidth(borderWidth.doubleValue());
-                            }
-                        }
-
-                        updateTextShape(autoShape, shapeData);
-
-                        // Set position and size
-                        if (anchor != null) {
-                            autoShape.setAnchor(anchor);
                         }
                     }
-                }
-                
-                Boolean isHidden = (Boolean) slideData.get("isHidden");
-                if (isHidden != null) {
-                    slide.setHidden(isHidden);
-                }
-                
-                String notesText = (String) slideData.get("notes");
-                if (notesText != null && !notesText.isEmpty()) {
-                    XSLFNotes notes = slide.getNotes();
-                    if (notes == null) {
-                        // POI doesn't easily support creating notes from scratch if they don't exist, 
-                        // but we can try slideShow.getNotesMaster() or just skip if null for this basic implementation.
-                    } else {
-                        // Clear and set notes
-                        for (XSLFShape shape : notes.getShapes()) {
-                            if (shape instanceof XSLFTextShape) {
-                                ((XSLFTextShape) shape).setText(notesText);
-                                break;
-                            }
-                        }
+
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> shapes = (List<Map<String, Object>>) slideData.get("shapes");
+                    if (shapes != null) {
+                        applyShapesLossless(slideShow, slide, shapes);
                     }
                 }
-                
-                slideIndex++;
+            }
+
+            java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+            slideShow.write(outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    private void applyShapesLossless(XMLSlideShow slideShow, XSLFSlide slide, List<Map<String, Object>> shapes) throws Exception {
+        // Map existing editable shapes by ID for stable updates/deletes.
+        Map<Integer, XSLFShape> byId = new HashMap<>();
+        List<XSLFShape> editable = new ArrayList<>();
+        for (XSLFShape s : slide.getShapes()) {
+            byId.put(s.getShapeId(), s);
+            if (isEditableShape(s)) editable.add(s);
+        }
+
+        // Authoritative empty slide: remove all editable shapes (keep non-editable ones like charts/graphics frames).
+        if (shapes.isEmpty()) {
+            List<XSLFShape> snapshot = new ArrayList<>(editable);
+            for (XSLFShape existing : snapshot) {
+                slide.removeShape(existing);
+            }
+            return;
+        }
+
+        Set<Integer> modelIds = new HashSet<>();
+        for (Map<String, Object> sd : shapes) {
+            Integer id = readShapeId(sd);
+            if (id != null) modelIds.add(id);
+        }
+
+        // Delete only editable shapes that are explicitly absent from the model (when IDs are present).
+        if (!modelIds.isEmpty()) {
+            List<XSLFShape> snapshot = new ArrayList<>(editable);
+            for (XSLFShape existing : snapshot) {
+                if (!modelIds.contains(existing.getShapeId())) {
+                    slide.removeShape(existing);
+                }
+            }
+
+            // Refresh after deletions
+            byId.clear();
+            editable.clear();
+            for (XSLFShape s : slide.getShapes()) {
+                byId.put(s.getShapeId(), s);
+                if (isEditableShape(s)) editable.add(s);
             }
         }
-        
-        java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-        slideShow.write(outputStream);
-        slideShow.close();
-        
-        return outputStream.toByteArray();
+
+        // Update / create shapes.
+        int fallbackIndex = 0;
+        for (Map<String, Object> shapeData : shapes) {
+            String type = shapeData.get("type") instanceof String t ? t : "text";
+            java.awt.geom.Rectangle2D.Double anchor = readAnchor(shapeData);
+
+            XSLFShape target = null;
+            Integer id = readShapeId(shapeData);
+            if (id != null) {
+                target = byId.get(id);
+            }
+            if (target == null && fallbackIndex < editable.size()) {
+                target = editable.get(fallbackIndex);
+            }
+
+            if ("image".equals(type)) {
+                XSLFPictureShape pic = applyOrCreatePicture(slideShow, slide, target, shapeData, anchor);
+                if (pic != null) {
+                    // Nothing else
+                }
+            } else {
+                XSLFTextShape textShape = applyOrCreateTextShape(slide, target, shapeData, anchor);
+                if (textShape != null) {
+                    // already updated
+                }
+            }
+
+            fallbackIndex++;
+        }
+    }
+
+    private boolean isEditableShape(XSLFShape shape) {
+        return (shape instanceof XSLFTextShape) || (shape instanceof XSLFPictureShape);
+    }
+
+    private Integer readShapeId(Map<String, Object> shapeData) {
+        Object v = shapeData.get(SHAPE_ID_KEY);
+        if (v instanceof Number n) return n.intValue();
+        return null;
+    }
+
+    private java.awt.geom.Rectangle2D.Double readAnchor(Map<String, Object> shapeData) {
+        Number x = (Number) shapeData.get("x");
+        Number y = (Number) shapeData.get("y");
+        Number w = (Number) shapeData.get("width");
+        Number h = (Number) shapeData.get("height");
+        if (x == null || y == null || w == null || h == null) return null;
+        return new java.awt.geom.Rectangle2D.Double(x.doubleValue(), y.doubleValue(), w.doubleValue(), h.doubleValue());
+    }
+
+    private XSLFPictureShape applyOrCreatePicture(
+            XMLSlideShow slideShow,
+            XSLFSlide slide,
+            XSLFShape target,
+            Map<String, Object> shapeData,
+            java.awt.geom.Rectangle2D anchor
+    ) throws Exception {
+        String imageUrl = shapeData.get("imageUrl") instanceof String s ? s : null;
+
+        XSLFPictureShape pictureShape = (target instanceof XSLFPictureShape ps) ? ps : null;
+
+        // If an imageUrl is provided, recreate the picture shape (POI doesn't expose setPictureData()).
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            if (pictureShape != null) {
+                slide.removeShape(pictureShape);
+                pictureShape = null;
+            }
+            byte[] imageBytes = resolveImageBytes(imageUrl);
+            PictureData.PictureType pictureType = resolvePictureType(imageUrl);
+            XSLFPictureData pictureData = slideShow.addPicture(imageBytes, pictureType);
+            pictureShape = slide.createPicture(pictureData);
+        }
+
+        if (pictureShape != null && anchor != null) {
+            pictureShape.setAnchor(anchor);
+        }
+
+        return pictureShape;
+    }
+
+    private XSLFTextShape applyOrCreateTextShape(
+            XSLFSlide slide,
+            XSLFShape target,
+            Map<String, Object> shapeData,
+            java.awt.geom.Rectangle2D anchor
+    ) {
+        String type = shapeData.get("type") instanceof String t ? t : "text";
+
+        XSLFTextShape textShape = (target instanceof XSLFTextShape ts) ? ts : null;
+        XSLFAutoShape autoShape = null;
+
+        if (textShape == null) {
+            autoShape = slide.createAutoShape();
+            textShape = autoShape;
+        } else if (textShape instanceof XSLFAutoShape as) {
+            autoShape = as;
+        }
+
+        if (autoShape != null) {
+            autoShape.setShapeType(mapToPoiShapeType(type));
+            if ("text".equals(type)) {
+                autoShape.setFillColor(null);
+                autoShape.setLineColor(null);
+            } else {
+                String backgroundColor = shapeData.get("backgroundColor") instanceof String s ? s : null;
+                String borderColor = shapeData.get("borderColor") instanceof String s ? s : null;
+                Number borderWidth = shapeData.get("borderWidth") instanceof Number n ? n : null;
+
+                if (backgroundColor != null && !backgroundColor.isBlank()) {
+                    autoShape.setFillColor(parseHexColor(backgroundColor));
+                }
+                if (borderColor != null && !borderColor.isBlank()) {
+                    autoShape.setLineColor(parseHexColor(borderColor));
+                }
+                if (borderWidth != null) {
+                    autoShape.setLineWidth(borderWidth.doubleValue());
+                }
+            }
+        }
+
+        updateTextShape(textShape, shapeData);
+        if (anchor != null) {
+            textShape.setAnchor(anchor);
+        }
+        return textShape;
     }
 
     private void updateTextShape(XSLFTextShape textShape, Map<String, Object> shapeData) {

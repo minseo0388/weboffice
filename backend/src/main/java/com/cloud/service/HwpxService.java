@@ -262,24 +262,56 @@ public class HwpxService {
                 if (parasData == null) continue;
 
                 for (int pi = 0; pi < sec.countOfPara() && pi < parasData.size(); pi++) {
-                    Para para   = sec.getPara(pi);
+                    Para para = sec.getPara(pi);
                     Map<String, Object> pData = parasData.get(pi);
 
-                    para.removeAllRuns();
-
-                    String cpId = "cp_s" + si + "_p" + pi;
+                    // Paragraph-level properties: use a stable per-paragraph ParaPr (doesn't delete original structures)
                     String ppId = "pp_s" + si + "_p" + pi;
-
-                    CharPr cp = findOrCreateCharPr(hwpx, cpId);
-                    applyCharPr(cp, pData);
                     ParaPr pp = findOrCreateParaPr(hwpx, ppId);
                     applyParaPr(pp, pData);
-
                     para.paraPrIDRef(ppId);
-                    Run run = para.addNewRun();
-                    run.charPrIDRef(cpId);
-                    T t = run.addNewT();
-                    t.addText(pData.get("text") instanceof String s ? s : "");
+
+                    // Find first plain-text T item and update it. Do NOT remove runs (preserve pictures/objects).
+                    Run targetRun = null;
+                    T targetT = null;
+
+                    for (int ri = 0; ri < para.countOfRun(); ri++) {
+                        Run run = para.getRun(ri);
+                        for (int ti = 0; ti < run.countOfRunItem(); ti++) {
+                            RunItem item = run.getRunItem(ti);
+                            if (item instanceof T t && t.isOnlyText()) {
+                                if (targetT == null) {
+                                    targetRun = run;
+                                    targetT = t;
+                                }
+                            }
+                        }
+                    }
+
+                    if (targetRun == null) {
+                        // No runs exist or no plain-text item found → create a new run + T
+                        targetRun = para.addNewRun();
+                        targetT = targetRun.addNewT();
+                    }
+
+                    // Clear all plain-text items to avoid duplicates, then set new text on the first target.
+                    for (int ri = 0; ri < para.countOfRun(); ri++) {
+                        Run run = para.getRun(ri);
+                        for (int ti = 0; ti < run.countOfRunItem(); ti++) {
+                            RunItem item = run.getRunItem(ti);
+                            if (item instanceof T t && t.isOnlyText()) {
+                                t.clear();
+                            }
+                        }
+                    }
+                    String newText = pData.get("text") instanceof String s ? s : "";
+                    targetT.addText(newText);
+
+                    // Character properties: apply to the target run only (preserve other runs' styling)
+                    String cpId = "cp_s" + si + "_p" + pi;
+                    CharPr cp = findOrCreateCharPr(hwpx, cpId);
+                    applyCharPr(cp, pData);
+                    targetRun.charPrIDRef(cpId);
                 }
             }
             return HWPXWriter.toBytes(hwpx);
