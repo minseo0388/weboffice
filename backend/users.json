@@ -1,0 +1,20 @@
+{
+  "users": [
+    {
+      "email": "example@gmail.com",
+      "quotaBytes": 3221225472,
+      "note": "3GB (기본값)"
+    }
+  ],
+  "_guide": {
+    "quotaBytes_examples": {
+      "1GB": 1073741824,
+      "2GB": 2147483648,
+      "3GB": 3221225472,
+      "5GB": 5368709120,
+      "10GB": 10737418240,
+      "unlimited": -1
+    },
+    "description": "users 배열에 허용할 구글 이메일과 개인별 용량(bytes)을 추가하세요. quotaBytes가 -1이면 무제한."
+  }
+}

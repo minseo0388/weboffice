@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import styles from './OfficeRibbon.module.css';
 import { SaveStatus, PresentationToolAction } from '../../types/document';
 import SaveStatusIndicator from './SaveStatusIndicator';
@@ -11,10 +11,47 @@ interface PowerPointRibbonProps {
 }
 
 export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, onExportPdf }: PowerPointRibbonProps) {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const imageReplaceInputRef = useRef<HTMLInputElement | null>(null);
+
   const handleInsertImage = () => {
-    const url = window.prompt('이미지 URL 또는 data URL을 입력하세요.');
-    if (!url) return;
-    onAction({ type: 'addImage', value: url });
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        onAction({ type: 'addImage', value: result });
+      }
+    };
+    reader.readAsDataURL(file);
+
+    e.currentTarget.value = '';
+  };
+
+  const handleReplaceImage = () => {
+    imageReplaceInputRef.current?.click();
+  };
+
+  const handleReplaceImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        onAction({ type: 'replaceSelectedImage', value: result });
+      }
+    };
+    reader.readAsDataURL(file);
+
+    e.currentTarget.value = '';
   };
 
   const handleNudge = (dx: number, dy: number) => {
@@ -37,11 +74,38 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
       </div>
 
       <div className={styles.toolRow}>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleImageFileChange}
+        />
+        <input
+          ref={imageReplaceInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleReplaceImageFileChange}
+        />
+
         <div className={styles.group}>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'prevSlide' })}>Prev</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'nextSlide' })}>Next</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'addSlide' })}>New Slide</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'duplicateSlide' })}>Duplicate</button>
+          <select className={styles.select} defaultValue="" onChange={(e) => {
+            const layout = e.target.value as 'title' | 'titleContent' | 'twoContent' | 'sectionHeader' | 'blank' | '';
+            if (!layout) return;
+            onAction({ type: 'applySlideLayout', layout });
+          }}>
+            <option value="" disabled>Layout</option>
+            <option value="title">Title Slide</option>
+            <option value="titleContent">Title + Content</option>
+            <option value="twoContent">Two Content</option>
+            <option value="sectionHeader">Section Header</option>
+            <option value="blank">Blank</option>
+          </select>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'deleteSlide' })}>Delete</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'moveSlideUp' })}>Move Up</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'moveSlideDown' })}>Move Down</button>
@@ -58,6 +122,7 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'addStar' })}>Star</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'addRoundRect' })}>Round</button>
           <button className={styles.toolBtn} onClick={handleInsertImage}>Image</button>
+          <button className={styles.toolBtn} onClick={handleReplaceImage}>Replace Image</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'duplicateShape' })}>Duplicate Shape</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'deleteShape' })}>Delete Shape</button>
         </div>
@@ -93,8 +158,16 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'top' })}>Top</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'middle' })}>Middle</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'bottom' })}>Bottom</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignInSelection', value: 'left' })}>Sel Left</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignInSelection', value: 'center' })}>Sel Center</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignInSelection', value: 'right' })}>Sel Right</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignInSelection', value: 'top' })}>Sel Top</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignInSelection', value: 'middle' })}>Sel Middle</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignInSelection', value: 'bottom' })}>Sel Bottom</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'bringToFront' })}>Bring Front</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'sendToBack' })}>Send Back</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'distributeShapes', direction: 'horizontal' })}>Distribute H</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'distributeShapes', direction: 'vertical' })}>Distribute V</button>
         </div>
 
         <div className={styles.group}>
@@ -110,6 +183,11 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
             {[0, 1, 2, 3, 4, 6, 8].map((width) => (
               <option key={width} value={width}>Border {width}px</option>
             ))}
+          </select>
+          <select className={styles.select} defaultValue="cover" onChange={(e) => onAction({ type: 'setImageFit', value: e.target.value as 'cover' | 'contain' | 'fill' })}>
+            <option value="cover">Image Cover</option>
+            <option value="contain">Image Contain</option>
+            <option value="fill">Image Fill</option>
           </select>
           <button className={styles.toolBtn} onClick={() => handleNudge(-10, 0)}>◀10</button>
           <button className={styles.toolBtn} onClick={() => handleNudge(10, 0)}>10▶</button>

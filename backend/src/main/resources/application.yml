@@ -41,9 +41,7 @@ discord:
     role:
       id: ${DISCORD_ROLE_ID:dummy}
 
-google:
-  allowlist:
-    path: ${ALLOWLIST_PATH:allowlist.json}
+
 
 frontend:
   redirect:
@@ -53,3 +51,10 @@ oracle:
   cloud:
     namespace: ${ORACLE_NS:dummy-ns}
     bucket: ${ORACLE_BUCKET:hangul-user-files}
+
+storage:
+  quota-bytes: ${STORAGE_QUOTA_BYTES:3221225472}   # Global fallback (per-user overrides in users.json)
+
+users:
+  config:
+    path: ${USERS_CONFIG_PATH:users.json}            # Path to users.json for per-user quota & Google allowlist

@@ -18,6 +18,7 @@ import {
   isSpreadsheetDocument,
   isTextDocument,
   PresentationSlide,
+  SlideShape,
   SpreadsheetSheet,
   SpreadsheetCell,
 } from '../types/document';
@@ -353,7 +354,7 @@ export default function EditorInner() {
       updateDocModel((prev) => {
         if (!prev || !isPresentationDocument(prev)) return prev;
         const updatedSlides = [...prev.slides];
-        const newShape = {
+        const newShape: SlideShape = {
           type,
           text: type === 'text' ? '새 텍스트 상자' : (type === 'image' ? '' : '새 도형'),
           x: 100, y: 100, width: type === 'text' ? 300 : 150, height: type === 'text' ? 50 : 150,
@@ -361,7 +362,8 @@ export default function EditorInner() {
           backgroundColor: type !== 'text' && type !== 'image' ? '#e2e8f0' : undefined,
           borderColor: type !== 'text' && type !== 'image' ? '#64748b' : undefined,
           borderWidth: type !== 'text' && type !== 'image' ? 2 : undefined,
-          imageUrl: type === 'image' ? imageUrl : undefined
+          imageUrl: type === 'image' ? imageUrl : undefined,
+          imageFit: type === 'image' ? 'cover' : undefined
         };
         updatedSlides[slideIdx] = {
           ...updatedSlides[slideIdx],

@@ -13,10 +13,12 @@ interface StorageUsage {
   usedBytes: number;
   fileCount: number;
   usedFormatted: string;
+  quotaBytes?: number;
+  quotaFormatted?: string;
+  usagePercent?: number;
 }
 
-/** OCI Object Storage max (free tier default). Change if you have a paid plan. */
-const MAX_BYTES = 20 * 1024 * 1024 * 1024; // 20 GB free tier
+const DEFAULT_MAX_BYTES = 3 * 1024 * 1024 * 1024; // 3 GB default
 
 function getIcon(name: string): string {
   if (name.endsWith('.hwpx')) return '📘';
@@ -124,11 +126,15 @@ export default function DashboardMain() {
 
   if (!user) return null;
 
-  const usagePct = usage
-    ? Math.min((usage.usedBytes / MAX_BYTES) * 100, 100)
-    : 0;
+  const isUnlimited = usage?.quotaBytes === -1;
+  const effectiveQuotaBytes = isUnlimited ? Infinity : (usage?.quotaBytes ?? DEFAULT_MAX_BYTES);
+  const usagePct = isUnlimited
+    ? 0
+    : (usage?.usagePercent ?? (usage
+        ? Math.min((usage.usedBytes / effectiveQuotaBytes) * 100, 100)
+        : 0));
 
-  const maxFormatted = formatBytes(MAX_BYTES);
+  const maxFormatted = isUnlimited ? '무제한' : (usage?.quotaFormatted ?? formatBytes(DEFAULT_MAX_BYTES));
 
   return (
     <div className={styles.container}>

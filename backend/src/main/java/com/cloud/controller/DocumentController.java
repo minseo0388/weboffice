@@ -178,6 +178,11 @@ public class DocumentController {
                     "savedBytes", response.savedBytes()
             ));
 
+            } catch (IllegalStateException e) {
+                return ResponseEntity.status(413).body(
+                    Map.of("error", "Save rejected: " + e.getMessage())
+                );
+
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body(

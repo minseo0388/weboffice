@@ -39,6 +39,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [editingShape, setEditingShape] = useState<{ shape: number; text: string } | null>(null);
   const [selectedShapeIdx, setSelectedShapeIdx] = useState<number | null>(null);
+  const [selectedShapeIdxs, setSelectedShapeIdxs] = useState<number[]>([]);
   const [dragState, setDragState] = useState<{ shapeIdx: number; startX: number; startY: number; initX: number; initY: number } | null>(null);
   const [isPresentMode, setIsPresentMode] = useState(false);
 
@@ -46,10 +47,23 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
   const slideWidth = 960;
   const slideHeight = 720;
 
-  const handleShapeClick = (shapeIdx: number, currentText: string) => {
-    // Only go into edit mode on double click or specific edit button, but for parity, 
-    // click will select, double click will edit. For now, let's keep click for edit if not dragging.
+  const handleShapeClick = (shapeIdx: number, e: React.MouseEvent) => {
+    if (e.shiftKey) {
+      setSelectedShapeIdxs((prev) => {
+        if (prev.includes(shapeIdx)) {
+          const next = prev.filter((idx) => idx !== shapeIdx);
+          setSelectedShapeIdx(next.length ? next[next.length - 1] : null);
+          return next;
+        }
+        const next = [...prev, shapeIdx];
+        setSelectedShapeIdx(shapeIdx);
+        return next;
+      });
+      return;
+    }
+
     setSelectedShapeIdx(shapeIdx);
+    setSelectedShapeIdxs([shapeIdx]);
   };
 
   const handleShapeDoubleClick = (shapeIdx: number, currentText: string) => {
@@ -120,12 +134,14 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
       if (action.type === 'nextSlide') {
         setActiveSlideIdx((prev) => Math.min(slides.length - 1, prev + 1));
         setSelectedShapeIdx(null);
+        setSelectedShapeIdxs([]);
         return;
       }
 
       if (action.type === 'prevSlide') {
         setActiveSlideIdx((prev) => Math.max(0, prev - 1));
         setSelectedShapeIdx(null);
+        setSelectedShapeIdxs([]);
         return;
       }
 
@@ -133,6 +149,122 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         onSlideAdd(activeSlideIdx);
         setActiveSlideIdx(activeSlideIdx + 1);
         setSelectedShapeIdx(null);
+        setSelectedShapeIdxs([]);
+        return;
+      }
+
+      if (action.type === 'applySlideLayout') {
+        const buildLayoutShapes = (): SlideShape[] => {
+          if (action.layout === 'blank') return [];
+
+          if (action.layout === 'title') {
+            return [
+              {
+                type: 'text',
+                text: '제목을 입력하세요',
+                x: 120,
+                y: 140,
+                width: 720,
+                height: 100,
+                formatting: { bold: true, italic: false, underline: false, fontSize: 44, fontName: 'Calibri', color: '#111827', align: 'center' },
+              },
+              {
+                type: 'text',
+                text: '부제목을 입력하세요',
+                x: 180,
+                y: 280,
+                width: 600,
+                height: 70,
+                formatting: { bold: false, italic: false, underline: false, fontSize: 24, fontName: 'Calibri', color: '#334155', align: 'center' },
+              },
+            ];
+          }
+
+          if (action.layout === 'titleContent') {
+            return [
+              {
+                type: 'text',
+                text: '슬라이드 제목',
+                x: 70,
+                y: 40,
+                width: 820,
+                height: 70,
+                formatting: { bold: true, italic: false, underline: false, fontSize: 36, fontName: 'Calibri', color: '#111827', align: 'left' },
+              },
+              {
+                type: 'round_rect',
+                text: '핵심 내용을 입력하세요',
+                x: 70,
+                y: 140,
+                width: 820,
+                height: 500,
+                formatting: { bold: false, italic: false, underline: false, fontSize: 22, fontName: 'Calibri', color: '#111827', align: 'left', bullet: true },
+                backgroundColor: '#f8fafc',
+                borderColor: '#cbd5e1',
+                borderWidth: 2,
+              },
+            ];
+          }
+
+          if (action.layout === 'twoContent') {
+            return [
+              {
+                type: 'text',
+                text: '비교/병렬 설명 제목',
+                x: 70,
+                y: 40,
+                width: 820,
+                height: 70,
+                formatting: { bold: true, italic: false, underline: false, fontSize: 34, fontName: 'Calibri', color: '#111827', align: 'left' },
+              },
+              {
+                type: 'round_rect',
+                text: '왼쪽 내용',
+                x: 70,
+                y: 140,
+                width: 390,
+                height: 500,
+                formatting: { bold: false, italic: false, underline: false, fontSize: 20, fontName: 'Calibri', color: '#0f172a', align: 'left', bullet: true },
+                backgroundColor: '#f8fafc',
+                borderColor: '#cbd5e1',
+                borderWidth: 2,
+              },
+              {
+                type: 'round_rect',
+                text: '오른쪽 내용',
+                x: 500,
+                y: 140,
+                width: 390,
+                height: 500,
+                formatting: { bold: false, italic: false, underline: false, fontSize: 20, fontName: 'Calibri', color: '#0f172a', align: 'left', bullet: true },
+                backgroundColor: '#f8fafc',
+                borderColor: '#cbd5e1',
+                borderWidth: 2,
+              },
+            ];
+          }
+
+          return [
+            {
+              type: 'text',
+              text: '섹션 제목',
+              x: 120,
+              y: 220,
+              width: 720,
+              height: 120,
+              formatting: { bold: true, italic: false, underline: false, fontSize: 52, fontName: 'Calibri', color: '#111827', align: 'center' },
+            },
+          ];
+        };
+
+        const updatedSlide: PresentationSlide = {
+          ...slides[activeSlideIdx],
+          shapes: buildLayoutShapes(),
+        };
+        onSlideReplace(activeSlideIdx, updatedSlide);
+        setSelectedShapeIdx(null);
+        setSelectedShapeIdxs([]);
+        setEditingShape(null);
         return;
       }
 
@@ -140,6 +272,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         onSlideDuplicate(activeSlideIdx);
         setActiveSlideIdx(Math.min(slides.length, activeSlideIdx + 1));
         setSelectedShapeIdx(null);
+        setSelectedShapeIdxs([]);
         return;
       }
 
@@ -147,6 +280,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         onSlideDelete(activeSlideIdx);
         setActiveSlideIdx(Math.max(0, activeSlideIdx - 1));
         setSelectedShapeIdx(null);
+        setSelectedShapeIdxs([]);
         return;
       }
 
@@ -155,6 +289,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
           onSlideMove(activeSlideIdx, 'up');
           setActiveSlideIdx(activeSlideIdx - 1);
           setSelectedShapeIdx(null);
+          setSelectedShapeIdxs([]);
         }
         return;
       }
@@ -164,6 +299,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
           onSlideMove(activeSlideIdx, 'down');
           setActiveSlideIdx(activeSlideIdx + 1);
           setSelectedShapeIdx(null);
+          setSelectedShapeIdxs([]);
         }
         return;
       }
@@ -237,111 +373,253 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         if (selectedShapeIdx !== null) {
           onShapeDelete(activeSlideIdx, selectedShapeIdx);
           setSelectedShapeIdx(null);
+          setSelectedShapeIdxs([]);
         }
         return;
       }
 
-      if (selectedShapeIdx === null) {
+      const targetIndexes = selectedShapeIdxs.length > 1
+        ? selectedShapeIdxs
+        : selectedShapeIdx !== null
+          ? [selectedShapeIdx]
+          : [];
+
+      const getSelectionBounds = (indexes: number[]) => {
+        const shapes = indexes
+          .map((idx) => slides[activeSlideIdx].shapes[idx])
+          .filter(Boolean);
+
+        if (!shapes.length) return null;
+
+        const left = Math.min(...shapes.map((s) => s.x));
+        const top = Math.min(...shapes.map((s) => s.y));
+        const right = Math.max(...shapes.map((s) => s.x + s.width));
+        const bottom = Math.max(...shapes.map((s) => s.y + s.height));
+        return {
+          left,
+          top,
+          right,
+          bottom,
+          centerX: (left + right) / 2,
+          centerY: (top + bottom) / 2,
+        };
+      };
+
+      if (action.type === 'alignInSelection') {
+        if (targetIndexes.length < 2) return;
+        const bounds = getSelectionBounds(targetIndexes);
+        if (!bounds) return;
+
+        const updatedShapes = [...slides[activeSlideIdx].shapes];
+        targetIndexes.forEach((idx) => {
+          const shape = updatedShapes[idx];
+          if (!shape) return;
+
+          if (action.value === 'left') shape.x = bounds.left;
+          if (action.value === 'center') shape.x = Math.round(bounds.centerX - shape.width / 2);
+          if (action.value === 'right') shape.x = Math.round(bounds.right - shape.width);
+          if (action.value === 'top') shape.y = bounds.top;
+          if (action.value === 'middle') shape.y = Math.round(bounds.centerY - shape.height / 2);
+          if (action.value === 'bottom') shape.y = Math.round(bounds.bottom - shape.height);
+
+          shape.x = Math.max(0, Math.min(slideWidth - shape.width, shape.x));
+          shape.y = Math.max(0, Math.min(slideHeight - shape.height, shape.y));
+        });
+
+        onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes: updatedShapes });
         return;
       }
 
-      const currentShape = slides[activeSlideIdx]?.shapes?.[selectedShapeIdx];
-      if (!currentShape) {
+      if (action.type === 'distributeShapes') {
+        const indices = targetIndexes.length >= 2
+          ? [...targetIndexes]
+          : slides[activeSlideIdx].shapes.map((_, idx) => idx);
+
+        if (indices.length < 2) return;
+
+        const sorted = [...indices].sort((a, b) => {
+          const shapeA = slides[activeSlideIdx].shapes[a];
+          const shapeB = slides[activeSlideIdx].shapes[b];
+          if (action.direction === 'horizontal') return shapeA.x - shapeB.x;
+          return shapeA.y - shapeB.y;
+        });
+
+        const updatedShapes = slides[activeSlideIdx].shapes.map((shape) => ({ ...shape, formatting: { ...shape.formatting } }));
+        const first = updatedShapes[sorted[0]];
+        const last = updatedShapes[sorted[sorted.length - 1]];
+        if (!first || !last) return;
+
+        if (action.direction === 'horizontal') {
+          const start = first.x;
+          const end = last.x + last.width;
+          const totalWidth = sorted.reduce((sum, idx) => sum + updatedShapes[idx].width, 0);
+          const gap = sorted.length > 1 ? (end - start - totalWidth) / (sorted.length - 1) : 0;
+
+          let cursor = start;
+          sorted.forEach((shapeIdx) => {
+            updatedShapes[shapeIdx].x = Math.max(0, Math.min(slideWidth - updatedShapes[shapeIdx].width, Math.round(cursor)));
+            cursor += updatedShapes[shapeIdx].width + gap;
+          });
+        } else {
+          const start = first.y;
+          const end = last.y + last.height;
+          const totalHeight = sorted.reduce((sum, idx) => sum + updatedShapes[idx].height, 0);
+          const gap = sorted.length > 1 ? (end - start - totalHeight) / (sorted.length - 1) : 0;
+
+          let cursor = start;
+          sorted.forEach((shapeIdx) => {
+            updatedShapes[shapeIdx].y = Math.max(0, Math.min(slideHeight - updatedShapes[shapeIdx].height, Math.round(cursor)));
+            cursor += updatedShapes[shapeIdx].height + gap;
+          });
+        }
+
+        onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes: updatedShapes });
+        return;
+      }
+
+      if (targetIndexes.length === 0) {
+        return;
+      }
+
+      const currentShape = slides[activeSlideIdx]?.shapes?.[targetIndexes[0]];
+      if (!currentShape) return;
+
+      if (action.type === 'replaceSelectedImage') {
+        const updatedShapes = [...slides[activeSlideIdx].shapes];
+        let replaced = false;
+        targetIndexes.forEach((idx) => {
+          const shape = updatedShapes[idx];
+          if (!shape || shape.type !== 'image') return;
+          updatedShapes[idx] = {
+            ...shape,
+            imageUrl: action.value,
+          };
+          replaced = true;
+        });
+
+        if (replaced) {
+          onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes: updatedShapes });
+        }
         return;
       }
 
       if (action.type === 'duplicateShape') {
-        const clonedShape: SlideShape = {
-          ...currentShape,
-          x: currentShape.x + 20,
-          y: currentShape.y + 20,
-          formatting: { ...currentShape.formatting },
-        };
+        const clonedShapes = targetIndexes
+          .map((idx) => slides[activeSlideIdx].shapes[idx])
+          .filter(Boolean)
+          .map((shape) => ({
+            ...shape,
+            x: shape.x + 20,
+            y: shape.y + 20,
+            formatting: { ...shape.formatting },
+          }));
         const updatedSlide: PresentationSlide = {
           ...slides[activeSlideIdx],
-          shapes: [...slides[activeSlideIdx].shapes, clonedShape],
+          shapes: [...slides[activeSlideIdx].shapes, ...clonedShapes],
         };
         onSlideReplace(activeSlideIdx, updatedSlide);
-        setSelectedShapeIdx(updatedSlide.shapes.length - 1);
+        const firstNewIdx = slides[activeSlideIdx].shapes.length;
+        const nextSelection = clonedShapes.map((_, i) => firstNewIdx + i);
+        setSelectedShapeIdx(nextSelection[0] ?? null);
+        setSelectedShapeIdxs(nextSelection);
         return;
       }
 
       if (action.type === 'bringToFront' || action.type === 'sendToBack') {
         const shapes = [...slides[activeSlideIdx].shapes];
-        const [picked] = shapes.splice(selectedShapeIdx, 1);
-        if (!picked) return;
+        const selectedSet = new Set(targetIndexes);
+        const picked = shapes.filter((_, idx) => selectedSet.has(idx));
+        const rest = shapes.filter((_, idx) => !selectedSet.has(idx));
+        if (!picked.length) return;
         if (action.type === 'bringToFront') {
-          shapes.push(picked);
-          setSelectedShapeIdx(shapes.length - 1);
+          const next = [...rest, ...picked];
+          onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes: next });
+          const start = next.length - picked.length;
+          const indexes = picked.map((_, i) => start + i);
+          setSelectedShapeIdx(indexes[0] ?? null);
+          setSelectedShapeIdxs(indexes);
         } else {
-          shapes.unshift(picked);
-          setSelectedShapeIdx(0);
+          const next = [...picked, ...rest];
+          onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes: next });
+          const indexes = picked.map((_, i) => i);
+          setSelectedShapeIdx(indexes[0] ?? null);
+          setSelectedShapeIdxs(indexes);
         }
-        onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes });
         return;
       }
 
-      const nextShape: SlideShape = {
-        ...currentShape,
-        formatting: {
-          ...currentShape.formatting,
-        },
-      };
+      const updatedShapes = [...slides[activeSlideIdx].shapes];
+      targetIndexes.forEach((idx) => {
+        const shape = updatedShapes[idx];
+        if (!shape) return;
+        const nextShape: SlideShape = {
+          ...shape,
+          formatting: { ...shape.formatting },
+        };
 
-      if (action.type === 'bold' || action.type === 'italic' || action.type === 'underline') {
-        const key = action.type;
-        nextShape.formatting[key] = !nextShape.formatting[key];
-      }
+        if (action.type === 'bold' || action.type === 'italic' || action.type === 'underline') {
+          const key = action.type;
+          nextShape.formatting[key] = !nextShape.formatting[key];
+        }
 
-      if (action.type === 'fontSize') {
-        nextShape.formatting.fontSize = action.value;
-      }
+        if (action.type === 'fontSize') {
+          nextShape.formatting.fontSize = action.value;
+        }
 
-      if (action.type === 'fontName') {
-        nextShape.formatting.fontName = action.value;
-      }
+        if (action.type === 'fontName') {
+          nextShape.formatting.fontName = action.value;
+        }
 
-      if (action.type === 'textColor') {
-        nextShape.formatting.color = action.value;
-      }
+        if (action.type === 'textColor') {
+          nextShape.formatting.color = action.value;
+        }
 
-      if (action.type === 'align') {
-        nextShape.formatting.align = action.value;
-      }
+        if (action.type === 'align') {
+          nextShape.formatting.align = action.value;
+        }
 
-      if (action.type === 'alignOnSlide') {
-        if (action.value === 'left') nextShape.x = 0;
-        if (action.value === 'center') nextShape.x = Math.max(0, (slideWidth - nextShape.width) / 2);
-        if (action.value === 'right') nextShape.x = Math.max(0, slideWidth - nextShape.width);
-        if (action.value === 'top') nextShape.y = 0;
-        if (action.value === 'middle') nextShape.y = Math.max(0, (slideHeight - nextShape.height) / 2);
-        if (action.value === 'bottom') nextShape.y = Math.max(0, slideHeight - nextShape.height);
-      }
+        if (action.type === 'alignOnSlide') {
+          if (action.value === 'left') nextShape.x = 0;
+          if (action.value === 'center') nextShape.x = Math.max(0, (slideWidth - nextShape.width) / 2);
+          if (action.value === 'right') nextShape.x = Math.max(0, slideWidth - nextShape.width);
+          if (action.value === 'top') nextShape.y = 0;
+          if (action.value === 'middle') nextShape.y = Math.max(0, (slideHeight - nextShape.height) / 2);
+          if (action.value === 'bottom') nextShape.y = Math.max(0, slideHeight - nextShape.height);
+        }
 
-      if (action.type === 'bullet') {
-        nextShape.formatting.bullet = !nextShape.formatting.bullet;
-      }
+        if (action.type === 'bullet') {
+          nextShape.formatting.bullet = !nextShape.formatting.bullet;
+        }
 
-      if (action.type === 'setShapeFillColor') {
-        nextShape.backgroundColor = action.value;
-      }
+        if (action.type === 'setShapeFillColor') {
+          nextShape.backgroundColor = action.value;
+        }
 
-      if (action.type === 'setShapeBorderColor') {
-        nextShape.borderColor = action.value;
-      }
+        if (action.type === 'setShapeBorderColor') {
+          nextShape.borderColor = action.value;
+        }
 
-      if (action.type === 'setShapeBorderWidth') {
-        nextShape.borderWidth = Math.max(0, action.value);
-      }
+        if (action.type === 'setShapeBorderWidth') {
+          nextShape.borderWidth = Math.max(0, action.value);
+        }
 
-      if (action.type === 'nudgeShape') {
-        nextShape.x = Math.max(0, Math.min(slideWidth - nextShape.width, nextShape.x + action.dx));
-        nextShape.y = Math.max(0, Math.min(slideHeight - nextShape.height, nextShape.y + action.dy));
-      }
+        if (action.type === 'setImageFit') {
+          if (nextShape.type === 'image') {
+            nextShape.imageFit = action.value;
+          }
+        }
 
-      onShapeFormatChange(activeSlideIdx, selectedShapeIdx, nextShape);
+        if (action.type === 'nudgeShape') {
+          nextShape.x = Math.max(0, Math.min(slideWidth - nextShape.width, nextShape.x + action.dx));
+          nextShape.y = Math.max(0, Math.min(slideHeight - nextShape.height, nextShape.y + action.dy));
+        }
+
+        updatedShapes[idx] = nextShape;
+      });
+
+      onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes: updatedShapes });
     },
-  }), [slides, activeSlideIdx, selectedShapeIdx, isPresentMode, onSlideAdd, onSlideDelete, onSlideDuplicate, onSlideMove, onSlideToggleVisibility, onSlideNotesUpdate, onShapeAdd, onShapeDelete, onShapeFormatChange, onSlideReplace, onAITranslate]);
+  }), [slides, activeSlideIdx, selectedShapeIdx, selectedShapeIdxs, isPresentMode, onSlideAdd, onSlideDelete, onSlideDuplicate, onSlideMove, onSlideToggleVisibility, onSlideNotesUpdate, onShapeAdd, onShapeDelete, onShapeFormatChange, onSlideReplace, onAITranslate]);
 
   if (!activeSlide) {
     return <div className={styles.container}>No slides available</div>;
@@ -380,6 +658,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
           if ((e.key === 'Delete' || e.key === 'Backspace') && selectedShapeIdx !== null && editingShape === null) {
             onShapeDelete(activeSlideIdx, selectedShapeIdx);
             setSelectedShapeIdx(null);
+            setSelectedShapeIdxs([]);
           }
 
           if (selectedShapeIdx !== null && editingShape === null) {
@@ -417,9 +696,9 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                 height: `${shape.height}px`,
                 overflow: 'hidden',
                 cursor: editingShape?.shape === shapeIdx ? 'text' : 'move',
-                border: selectedShapeIdx === shapeIdx ? '1px dashed #666' : 'none',
+                border: selectedShapeIdxs.includes(shapeIdx) ? '2px dashed #0ea5e9' : selectedShapeIdx === shapeIdx ? '1px dashed #666' : 'none',
               }}
-              onClick={() => handleShapeClick(shapeIdx, shape.text)}
+              onClick={(e) => handleShapeClick(shapeIdx, e)}
               onDoubleClick={() => handleShapeDoubleClick(shapeIdx, shape.text)}
               onPointerDown={(e) => handlePointerDown(e, shapeIdx, shape)}
               onPointerMove={handlePointerMove}
@@ -444,7 +723,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                 <img
                   src={shape.imageUrl}
                   alt="Slide Image"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: shape.imageFit || 'cover' }}
                   draggable={false}
                 />
               ) : (
@@ -503,6 +782,8 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                 onClick={() => {
                   setActiveSlideIdx(idx);
                   setEditingShape(null);
+                  setSelectedShapeIdx(null);
+                  setSelectedShapeIdxs([]);
                 }}
                 title={`Slide ${slide.slideNumber}`}
               >
@@ -541,7 +822,7 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
                 fontFamily: shape.formatting.fontName || 'Calibri, sans-serif'
               }}>
                 {shape.type === 'image' && shape.imageUrl ? (
-                  <img src={shape.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={shape.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: shape.imageFit || 'cover' }} />
                 ) : (
                   <>
                     {shape.formatting.bullet && <span style={{ marginRight: '8px' }}>•</span>}

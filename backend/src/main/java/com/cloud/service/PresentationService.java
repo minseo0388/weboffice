@@ -1,8 +1,17 @@
 package com.cloud.service;
 
 import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import java.awt.Color;
 import org.apache.poi.xslf.usermodel.*;
+import org.apache.poi.sl.usermodel.PictureData;
+import org.apache.poi.sl.usermodel.ShapeType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -52,9 +61,8 @@ public class PresentationService {
             List<Map<String, Object>> shapes = new ArrayList<>();
             
             for (XSLFShape shape : slide.getShapes()) {
-                if (shape instanceof XSLFTextShape) {
-                    XSLFTextShape textShape = (XSLFTextShape) shape;
-                    Map<String, Object> shapeData = extractTextShape(textShape);
+                Map<String, Object> shapeData = extractShape(shape);
+                if (shapeData != null) {
                     shapes.add(shapeData);
                 }
             }
@@ -87,9 +95,68 @@ public class PresentationService {
     /**
      * Extract text and formatting from a text shape.
      */
-    private Map<String, Object> extractTextShape(XSLFTextShape textShape) {
+    private Map<String, Object> extractShape(XSLFShape shape) {
+        if (shape instanceof XSLFPictureShape pictureShape) {
+            return extractImageShape(pictureShape);
+        }
+
+        if (shape instanceof XSLFTextShape textShape) {
+            return extractTextOrAutoShape(textShape);
+        }
+
+        return null;
+    }
+
+    private Map<String, Object> extractImageShape(XSLFPictureShape pictureShape) {
         Map<String, Object> shapeData = new LinkedHashMap<>();
-        shapeData.put("type", "text");
+        shapeData.put("type", "image");
+        shapeData.put("text", "");
+
+        java.awt.geom.Rectangle2D anchor = pictureShape.getAnchor();
+        shapeData.put("x", (int) anchor.getX());
+        shapeData.put("y", (int) anchor.getY());
+        shapeData.put("width", (int) anchor.getWidth());
+        shapeData.put("height", (int) anchor.getHeight());
+        shapeData.put("imageFit", "cover");
+
+        Map<String, Object> formatting = new LinkedHashMap<>();
+        formatting.put("fontName", "Calibri");
+        formatting.put("fontSize", 18);
+        formatting.put("align", "center");
+        shapeData.put("formatting", formatting);
+
+        XSLFPictureData pictureData = pictureShape.getPictureData();
+        if (pictureData != null) {
+            String mime = pictureData.getContentType();
+            byte[] bytes = pictureData.getData();
+            if (mime != null && bytes != null) {
+                String base64 = Base64.getEncoder().encodeToString(bytes);
+                shapeData.put("imageUrl", "data:" + mime + ";base64," + base64);
+            }
+        }
+
+        return shapeData;
+    }
+
+    private Map<String, Object> extractTextOrAutoShape(XSLFTextShape textShape) {
+        Map<String, Object> shapeData = new LinkedHashMap<>();
+        String type = "text";
+        if (textShape instanceof XSLFAutoShape autoShape) {
+            type = mapFromPoiShapeType(autoShape.getShapeType());
+            if ("rect".equals(type) && autoShape.getFillColor() == null && autoShape.getLineColor() == null) {
+                type = "text";
+            }
+            if (autoShape.getFillColor() != null) {
+                shapeData.put("backgroundColor", colorToHex(autoShape.getFillColor()));
+            }
+            if (autoShape.getLineColor() != null) {
+                shapeData.put("borderColor", colorToHex(autoShape.getLineColor()));
+            }
+            if (autoShape.getLineWidth() > 0) {
+                shapeData.put("borderWidth", Math.max(0, (int) Math.round(autoShape.getLineWidth())));
+            }
+        }
+        shapeData.put("type", type);
         
         StringBuilder fullText = new StringBuilder();
         for (XSLFTextParagraph paragraph : textShape.getTextParagraphs()) {
@@ -118,10 +185,21 @@ public class PresentationService {
                 formatting.put("italic", run.isItalic());
                 formatting.put("underline", run.isUnderlined());
                 formatting.put("fontSize", run.getFontSize());
+                // run.getFontColor() returns PaintStyle in POI; parsing exact color is optional here.
                 
                 String fontName = run.getFontFamily();
                 formatting.put("fontName", fontName != null ? fontName : "Calibri");
             }
+
+            if (para.getTextAlign() != null) {
+                formatting.put("align", switch (para.getTextAlign()) {
+                    case CENTER -> "center";
+                    case RIGHT -> "right";
+                    case JUSTIFY, JUSTIFY_LOW -> "justify";
+                    default -> "left";
+                });
+            }
+            formatting.put("bullet", para.isBullet());
         }
         
         shapeData.put("formatting", formatting);
@@ -171,40 +249,59 @@ public class PresentationService {
                     // Re-create all shapes based on the JSON model
                     for (Map<String, Object> shapeData : shapes) {
                         String type = (String) shapeData.getOrDefault("type", "text");
-                        XSLFAutoShape autoShape = slide.createAutoShape();
-                        
-                        if ("rect".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
-                        } else if ("ellipse".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.ELLIPSE);
-                        } else if ("triangle".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.TRIANGLE);
-                        } else if ("right_arrow".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RIGHT_ARROW);
-                        } else if ("hexagon".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.HEXAGON);
-                        } else if ("star".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.STAR_5);
-                        } else if ("round_rect".equals(type)) {
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.ROUND_RECT);
-                        } else {
-                            // Text box
-                            autoShape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
-                            autoShape.setFillColor(null);
-                            autoShape.setLineColor(null);
-                        }
-                        
-                        updateTextShape(autoShape, shapeData);
-                        
-                        // Set position and size
                         Number x = (Number) shapeData.get("x");
                         Number y = (Number) shapeData.get("y");
                         Number w = (Number) shapeData.get("width");
                         Number h = (Number) shapeData.get("height");
+
+                        java.awt.geom.Rectangle2D.Double anchor = null;
                         if (x != null && y != null && w != null && h != null) {
-                            autoShape.setAnchor(new java.awt.geom.Rectangle2D.Double(
+                            anchor = new java.awt.geom.Rectangle2D.Double(
                                 x.doubleValue(), y.doubleValue(), w.doubleValue(), h.doubleValue()
-                            ));
+                            );
+                        }
+
+                        if ("image".equals(type)) {
+                            String imageUrl = (String) shapeData.get("imageUrl");
+                            if (imageUrl != null && !imageUrl.isBlank()) {
+                                byte[] imageBytes = resolveImageBytes(imageUrl);
+                                PictureData.PictureType pictureType = resolvePictureType(imageUrl);
+                                XSLFPictureData pictureData = slideShow.addPicture(imageBytes, pictureType);
+                                XSLFPictureShape pictureShape = slide.createPicture(pictureData);
+                                if (anchor != null) {
+                                    pictureShape.setAnchor(anchor);
+                                }
+                            }
+                            continue;
+                        }
+
+                        XSLFAutoShape autoShape = slide.createAutoShape();
+                        autoShape.setShapeType(mapToPoiShapeType(type));
+
+                        if ("text".equals(type)) {
+                            autoShape.setFillColor(null);
+                            autoShape.setLineColor(null);
+                        } else {
+                            String backgroundColor = (String) shapeData.get("backgroundColor");
+                            String borderColor = (String) shapeData.get("borderColor");
+                            Number borderWidth = (Number) shapeData.get("borderWidth");
+
+                            if (backgroundColor != null) {
+                                autoShape.setFillColor(parseHexColor(backgroundColor));
+                            }
+                            if (borderColor != null) {
+                                autoShape.setLineColor(parseHexColor(borderColor));
+                            }
+                            if (borderWidth != null) {
+                                autoShape.setLineWidth(borderWidth.doubleValue());
+                            }
+                        }
+
+                        updateTextShape(autoShape, shapeData);
+
+                        // Set position and size
+                        if (anchor != null) {
+                            autoShape.setAnchor(anchor);
                         }
                     }
                 }
@@ -283,7 +380,105 @@ public class PresentationService {
                 if (formatting.containsKey("fontName")) {
                     run.setFontFamily((String) formatting.get("fontName"));
                 }
+                if (formatting.containsKey("color")) {
+                    String colorHex = (String) formatting.get("color");
+                    if (colorHex != null) {
+                        run.setFontColor(parseHexColor(colorHex));
+                    }
+                }
             }
         }
+    }
+
+    private ShapeType mapToPoiShapeType(String type) {
+        return switch (type) {
+            case "rect" -> ShapeType.RECT;
+            case "ellipse" -> ShapeType.ELLIPSE;
+            case "triangle" -> ShapeType.TRIANGLE;
+            case "right_arrow" -> ShapeType.RIGHT_ARROW;
+            case "hexagon" -> ShapeType.HEXAGON;
+            case "star" -> ShapeType.STAR_5;
+            case "round_rect" -> ShapeType.ROUND_RECT;
+            default -> ShapeType.RECT;
+        };
+    }
+
+    private String mapFromPoiShapeType(ShapeType shapeType) {
+        if (shapeType == null) return "text";
+        return switch (shapeType) {
+            case RECT -> "rect";
+            case ELLIPSE -> "ellipse";
+            case TRIANGLE -> "triangle";
+            case RIGHT_ARROW -> "right_arrow";
+            case HEXAGON -> "hexagon";
+            case STAR_5 -> "star";
+            case ROUND_RECT -> "round_rect";
+            default -> "text";
+        };
+    }
+
+    private Color parseHexColor(String hex) {
+        if (hex == null || hex.isBlank()) {
+            return Color.BLACK;
+        }
+        String value = hex.startsWith("#") ? hex.substring(1) : hex;
+        if (value.length() == 3) {
+            value = "" + value.charAt(0) + value.charAt(0)
+                    + value.charAt(1) + value.charAt(1)
+                    + value.charAt(2) + value.charAt(2);
+        }
+        try {
+            int rgb = Integer.parseInt(value, 16);
+            return new Color(rgb);
+        } catch (Exception e) {
+            return Color.BLACK;
+        }
+    }
+
+    private String colorToHex(Color color) {
+        if (color == null) return "#000000";
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
+    }
+
+    private byte[] resolveImageBytes(String imageUrl) throws Exception {
+        if (imageUrl.startsWith("data:")) {
+            int commaIdx = imageUrl.indexOf(',');
+            if (commaIdx < 0) {
+                throw new IllegalArgumentException("Invalid data URL image payload");
+            }
+            String meta = imageUrl.substring(0, commaIdx);
+            String dataPart = imageUrl.substring(commaIdx + 1);
+            if (meta.contains(";base64")) {
+                return Base64.getDecoder().decode(dataPart);
+            }
+            return java.net.URLDecoder.decode(dataPart, StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
+        }
+
+        try (InputStream remoteIn = URI.create(imageUrl).toURL().openStream()) {
+            return remoteIn.readAllBytes();
+        }
+    }
+
+    private PictureData.PictureType resolvePictureType(String imageUrl) {
+        String lower = imageUrl.toLowerCase(Locale.ROOT);
+
+        Pattern mimePattern = Pattern.compile("^data:([^;]+);base64,", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = mimePattern.matcher(imageUrl);
+        if (matcher.find()) {
+            String mime = matcher.group(1).toLowerCase(Locale.ROOT);
+            if (mime.contains("png")) return PictureData.PictureType.PNG;
+            if (mime.contains("jpeg") || mime.contains("jpg")) return PictureData.PictureType.JPEG;
+            if (mime.contains("gif")) return PictureData.PictureType.GIF;
+            if (mime.contains("bmp")) return PictureData.PictureType.BMP;
+            if (mime.contains("tiff")) return PictureData.PictureType.TIFF;
+            if (mime.contains("webp")) return PictureData.PictureType.PNG;
+        }
+
+        if (lower.contains(".png")) return PictureData.PictureType.PNG;
+        if (lower.contains(".jpg") || lower.contains(".jpeg")) return PictureData.PictureType.JPEG;
+        if (lower.contains(".gif")) return PictureData.PictureType.GIF;
+        if (lower.contains(".bmp")) return PictureData.PictureType.BMP;
+        if (lower.contains(".tif") || lower.contains(".tiff")) return PictureData.PictureType.TIFF;
+        return PictureData.PictureType.PNG;
     }
 }

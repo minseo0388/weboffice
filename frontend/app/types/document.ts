@@ -104,6 +104,7 @@ export interface SlideShape {
   borderColor?: string;
   borderWidth?: number;
   imageUrl?: string; // For image shapes (Base64 or URL)
+  imageFit?: 'cover' | 'contain' | 'fill';
 }
 
 export interface PresentationSlide {
@@ -158,18 +159,23 @@ export type PresentationToolAction =
   | { type: 'prevSlide' }
   | { type: 'addSlide' }
   | { type: 'duplicateSlide' }
+  | { type: 'applySlideLayout'; layout: 'title' | 'titleContent' | 'twoContent' | 'sectionHeader' | 'blank' }
   | { type: 'deleteSlide' }
   | { type: 'addShape' }
   | { type: 'duplicateShape' }
   | { type: 'deleteShape' }
   | { type: 'align'; value: 'left' | 'center' | 'right' | 'justify' }
   | { type: 'alignOnSlide'; value: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' }
+  | { type: 'alignInSelection'; value: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' }
   | { type: 'bringToFront' }
   | { type: 'sendToBack' }
+  | { type: 'distributeShapes'; direction: 'horizontal' | 'vertical' }
   | { type: 'bullet' }
   | { type: 'addRect' }
   | { type: 'addEllipse' }
   | { type: 'addImage'; value: string }
+  | { type: 'replaceSelectedImage'; value: string }
+  | { type: 'setImageFit'; value: 'cover' | 'contain' | 'fill' }
   | { type: 'addTriangle' }
   | { type: 'addRightArrow' }
   | { type: 'addHexagon' }

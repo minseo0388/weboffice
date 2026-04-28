@@ -3,6 +3,7 @@ package com.cloud.service;
 import com.cloud.model.UserPrincipal;
 import com.oracle.bmc.Region;
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider;
+import com.oracle.bmc.model.BmcException;
 import com.oracle.bmc.objectstorage.ObjectStorage;
 import com.oracle.bmc.objectstorage.ObjectStorageClient;
 import com.oracle.bmc.objectstorage.requests.*;
@@ -33,9 +34,12 @@ import java.util.stream.Collectors;
 public class StorageService {
 
     private final DocumentServiceFactory documentServiceFactory;
+    private final UserConfigService userConfigService;
 
-    public StorageService(DocumentServiceFactory documentServiceFactory) {
+    public StorageService(DocumentServiceFactory documentServiceFactory,
+                          UserConfigService userConfigService) {
         this.documentServiceFactory = documentServiceFactory;
+        this.userConfigService = userConfigService;
     }
 
     @Value("${oracle.cloud.namespace}")
@@ -43,6 +47,10 @@ public class StorageService {
 
     @Value("${oracle.cloud.bucket}")
     private String bucket;
+
+    // Global fallback quota — overridden per-user via UserConfigService / users.json
+    @Value("${storage.quota-bytes:3221225472}")
+    private long defaultQuotaBytes;
 
     private ObjectStorage client;
 
@@ -140,6 +148,8 @@ public class StorageService {
      * @throws Exception if Oracle OCI client fails or I/O error occurs
      */
     public void uploadFile(UserPrincipal user, String fileName, MultipartFile file) throws Exception {
+        enforceQuotaBeforeWrite(user, fileName, file.getSize());
+
         String objectName = user.storagePrefixKey() + sanitizeFileName(fileName);
         String contentType = file.getContentType();
         if (contentType == null || contentType.isBlank() || "application/octet-stream".equals(contentType)) {
@@ -172,6 +182,8 @@ public class StorageService {
      * Infers content type from file extension.
      */
     public void uploadFile(UserPrincipal user, String fileName, byte[] data) throws Exception {
+        enforceQuotaBeforeWrite(user, fileName, data.length);
+
         String objectName = user.storagePrefixKey() + sanitizeFileName(fileName);
         String contentType = inferContentType(fileName);
 
@@ -225,6 +237,52 @@ public class StorageService {
     }
 
     public record SaveResult(String fileName, String fileType, long savedBytes) {}
+
+    /**
+     * Returns the effective quota for this user.
+     * Resolves per-user quota from users.json; falls back to global default.
+     */
+    public long getEffectiveQuota(UserPrincipal user) {
+        return userConfigService.getQuotaForUser(user.provider(), user.email());
+    }
+
+    private void enforceQuotaBeforeWrite(UserPrincipal user, String fileName, long incomingSize) {
+        StorageStats stats = getUsageStats(user);
+        long existingSize = getExistingObjectSize(user, fileName);
+        long projectedUsage = stats.usedBytes() - existingSize + incomingSize;
+        long effectiveQuota = getEffectiveQuota(user);
+
+        // Long.MAX_VALUE means unlimited — skip check
+        if (effectiveQuota != Long.MAX_VALUE && projectedUsage > effectiveQuota) {
+            throw new IllegalStateException(
+                    "Storage quota exceeded. " +
+                    "used=" + stats.usedBytes() + " bytes, " +
+                    "quota=" + effectiveQuota + " bytes, " +
+                    "incoming=" + incomingSize + " bytes"
+            );
+        }
+    }
+
+    private long getExistingObjectSize(UserPrincipal user, String fileName) {
+        String objectName = user.storagePrefixKey() + sanitizeFileName(fileName);
+        try {
+            HeadObjectRequest request = HeadObjectRequest.builder()
+                    .namespaceName(namespace)
+                    .bucketName(bucket)
+                    .objectName(objectName)
+                    .build();
+
+            HeadObjectResponse response = client.headObject(request);
+            Long contentLength = response.getContentLength();
+            return contentLength != null ? contentLength : 0L;
+        } catch (BmcException e) {
+            // Object not found means this is a new file.
+            if (e.getStatusCode() == 404) {
+                return 0L;
+            }
+            throw e;
+        }
+    }
 
     /**
      * Downloads a file from the user's personal directory.

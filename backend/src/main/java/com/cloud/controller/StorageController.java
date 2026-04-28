@@ -61,6 +61,9 @@ public class StorageController {
                     "fileName", fileName,
                     "size", String.valueOf(file.getSize())
             ));
+            } catch (IllegalStateException e) {
+                return ResponseEntity.status(413)
+                    .body(Map.of("error", "Upload rejected: " + e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Upload failed: " + e.getMessage()));
@@ -114,10 +117,28 @@ public class StorageController {
     public ResponseEntity<Map<String, Object>> getUsage(@AuthenticationPrincipal UserPrincipal user) {
         try {
             StorageService.StorageStats stats = storageService.getUsageStats(user);
+            long quotaBytes = storageService.getEffectiveQuota(user);
+
+            double usagePercent;
+            String quotaFormatted;
+            if (quotaBytes == Long.MAX_VALUE) {
+                // Unlimited user
+                usagePercent = 0.0;
+                quotaFormatted = "무제한";
+            } else {
+                usagePercent = quotaBytes > 0
+                        ? Math.min((stats.usedBytes() * 100.0) / quotaBytes, 100.0)
+                        : 0.0;
+                quotaFormatted = formatBytes(quotaBytes);
+            }
+
             return ResponseEntity.ok(Map.of(
-                    "usedBytes",     stats.usedBytes(),
-                    "fileCount",     stats.fileCount(),
-                    "usedFormatted", formatBytes(stats.usedBytes())
+                    "usedBytes",      stats.usedBytes(),
+                    "fileCount",      stats.fileCount(),
+                    "usedFormatted",  formatBytes(stats.usedBytes()),
+                    "quotaBytes",     quotaBytes == Long.MAX_VALUE ? -1L : quotaBytes,
+                    "quotaFormatted", quotaFormatted,
+                    "usagePercent",   usagePercent
             ));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()

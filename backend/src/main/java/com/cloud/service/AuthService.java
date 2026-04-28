@@ -1,6 +1,5 @@
 package com.cloud.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -10,11 +9,15 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * AuthService handles OAuth2 post-login validation.
+ *
+ * Google:  delegates to UserConfigService which reads users.json allowlist.
+ * Discord: validates Guild + Role membership via Discord REST API.
+ */
 @Service
 public class AuthService {
 
@@ -24,32 +27,23 @@ public class AuthService {
     @Value("${discord.required.role.id}")
     private String requiredRoleId;
 
-    @Value("${google.allowlist.path:allowlist.json}")
-    private String allowlistPath;
-
+    private final UserConfigService userConfigService;
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /**
-     * Validates Google User by checking if email exists in Allowlist JSON
-     */
-    public boolean validateGoogleUser(String email) {
-        try {
-            File file = new File(allowlistPath);
-            if (!file.exists()) return false;
-            
-            // Allowlist is assumed to be a JSON array of strings: ["user1@gmail.com", "user2@gmail.com"]
-            @SuppressWarnings("unchecked")
-            List<String> allowedEmails = objectMapper.readValue(file, List.class);
-            return allowedEmails.contains(email);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
+    public AuthService(UserConfigService userConfigService) {
+        this.userConfigService = userConfigService;
     }
 
     /**
-     * Validates Discord User by verifying Guild & Role membership via Discord API
+     * Validates a Google user by checking if their email exists in users.json.
+     * Returns true only if the email is found in the allowlist.
+     */
+    public boolean validateGoogleUser(String email) {
+        return userConfigService.isGoogleEmailAllowed(email);
+    }
+
+    /**
+     * Validates a Discord user by verifying Guild & Role membership via Discord API.
      */
     @SuppressWarnings({"null", "unchecked"})
     public boolean validateDiscordUser(String accessToken) {
@@ -61,15 +55,15 @@ public class AuthService {
             // 1. Fetch user's guilds
             String guildsUrl = "https://discord.com/api/users/@me/guilds";
             ResponseEntity<List<Map<String, Object>>> guildsResponse = restTemplate.exchange(
-                    guildsUrl, 
-                    HttpMethod.GET, 
-                    entity, 
+                    guildsUrl,
+                    HttpMethod.GET,
+                    entity,
                     new ParameterizedTypeReference<List<Map<String, Object>>>() {}
             );
-            
+
             List<Map<String, Object>> guilds = guildsResponse.getBody();
             if (guilds == null) return false;
-            
+
             boolean inGuild = false;
             for (Map<String, Object> guild : guilds) {
                 if (requiredGuildId.equals(guild.get("id"))) {
@@ -82,15 +76,15 @@ public class AuthService {
             // 2. Fetch specific guild member info (to traverse roles)
             String memberUrl = "https://discord.com/api/users/@me/guilds/" + requiredGuildId + "/member";
             ResponseEntity<Map<String, Object>> memberResponse = restTemplate.exchange(
-                    memberUrl, 
-                    HttpMethod.GET, 
-                    entity, 
+                    memberUrl,
+                    HttpMethod.GET,
+                    entity,
                     new ParameterizedTypeReference<Map<String, Object>>() {}
             );
-            
+
             Map<String, Object> memberInfo = memberResponse.getBody();
             if (memberInfo == null) return false;
-            
+
             List<String> roles = (List<String>) memberInfo.get("roles");
             return roles != null && roles.contains(requiredRoleId);
 
