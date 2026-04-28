@@ -13,7 +13,9 @@ interface SlideNavigatorProps {
   onTextChange: (slideIdx: number, shapeIdx: number, newText: string) => void;
   onShapeFormatChange: (slideIdx: number, shapeIdx: number, shape: SlideShape) => void;
   onSlideAdd: (afterIdx: number) => void;
+  onSlideDuplicate: (slideIdx: number) => void;
   onSlideDelete: (slideIdx: number) => void;
+  onSlideReplace: (slideIdx: number, slide: PresentationSlide) => void;
   onShapeAdd: (slideIdx: number, type?: string, imageUrl?: string) => void;
   onShapeDelete: (slideIdx: number, shapeIdx: number) => void;
   onSlideMove: (slideIdx: number, direction: 'up' | 'down') => void;
@@ -31,7 +33,7 @@ export interface SlideNavigatorHandle {
  * Supports slide-by-slide navigation and text editing within shapes.
  */
 const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(function SlideNavigator(
-  { slides, onTextChange, onShapeFormatChange, onSlideAdd, onSlideDelete, onShapeAdd, onShapeDelete, onSlideMove, onSlideToggleVisibility, onSlideNotesUpdate, onAITranslate }: SlideNavigatorProps,
+  { slides, onTextChange, onShapeFormatChange, onSlideAdd, onSlideDuplicate, onSlideDelete, onSlideReplace, onShapeAdd, onShapeDelete, onSlideMove, onSlideToggleVisibility, onSlideNotesUpdate, onAITranslate }: SlideNavigatorProps,
   ref
 ) {
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
@@ -41,6 +43,8 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
   const [isPresentMode, setIsPresentMode] = useState(false);
 
   const activeSlide = slides[activeSlideIdx];
+  const slideWidth = 960;
+  const slideHeight = 720;
 
   const handleShapeClick = (shapeIdx: number, currentText: string) => {
     // Only go into edit mode on double click or specific edit button, but for parity, 
@@ -128,6 +132,13 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
       if (action.type === 'addSlide') {
         onSlideAdd(activeSlideIdx);
         setActiveSlideIdx(activeSlideIdx + 1);
+        setSelectedShapeIdx(null);
+        return;
+      }
+
+      if (action.type === 'duplicateSlide') {
+        onSlideDuplicate(activeSlideIdx);
+        setActiveSlideIdx(Math.min(slides.length, activeSlideIdx + 1));
         setSelectedShapeIdx(null);
         return;
       }
@@ -239,6 +250,37 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         return;
       }
 
+      if (action.type === 'duplicateShape') {
+        const clonedShape: SlideShape = {
+          ...currentShape,
+          x: currentShape.x + 20,
+          y: currentShape.y + 20,
+          formatting: { ...currentShape.formatting },
+        };
+        const updatedSlide: PresentationSlide = {
+          ...slides[activeSlideIdx],
+          shapes: [...slides[activeSlideIdx].shapes, clonedShape],
+        };
+        onSlideReplace(activeSlideIdx, updatedSlide);
+        setSelectedShapeIdx(updatedSlide.shapes.length - 1);
+        return;
+      }
+
+      if (action.type === 'bringToFront' || action.type === 'sendToBack') {
+        const shapes = [...slides[activeSlideIdx].shapes];
+        const [picked] = shapes.splice(selectedShapeIdx, 1);
+        if (!picked) return;
+        if (action.type === 'bringToFront') {
+          shapes.push(picked);
+          setSelectedShapeIdx(shapes.length - 1);
+        } else {
+          shapes.unshift(picked);
+          setSelectedShapeIdx(0);
+        }
+        onSlideReplace(activeSlideIdx, { ...slides[activeSlideIdx], shapes });
+        return;
+      }
+
       const nextShape: SlideShape = {
         ...currentShape,
         formatting: {
@@ -267,13 +309,39 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
         nextShape.formatting.align = action.value;
       }
 
+      if (action.type === 'alignOnSlide') {
+        if (action.value === 'left') nextShape.x = 0;
+        if (action.value === 'center') nextShape.x = Math.max(0, (slideWidth - nextShape.width) / 2);
+        if (action.value === 'right') nextShape.x = Math.max(0, slideWidth - nextShape.width);
+        if (action.value === 'top') nextShape.y = 0;
+        if (action.value === 'middle') nextShape.y = Math.max(0, (slideHeight - nextShape.height) / 2);
+        if (action.value === 'bottom') nextShape.y = Math.max(0, slideHeight - nextShape.height);
+      }
+
       if (action.type === 'bullet') {
         nextShape.formatting.bullet = !nextShape.formatting.bullet;
       }
 
+      if (action.type === 'setShapeFillColor') {
+        nextShape.backgroundColor = action.value;
+      }
+
+      if (action.type === 'setShapeBorderColor') {
+        nextShape.borderColor = action.value;
+      }
+
+      if (action.type === 'setShapeBorderWidth') {
+        nextShape.borderWidth = Math.max(0, action.value);
+      }
+
+      if (action.type === 'nudgeShape') {
+        nextShape.x = Math.max(0, Math.min(slideWidth - nextShape.width, nextShape.x + action.dx));
+        nextShape.y = Math.max(0, Math.min(slideHeight - nextShape.height, nextShape.y + action.dy));
+      }
+
       onShapeFormatChange(activeSlideIdx, selectedShapeIdx, nextShape);
     },
-  }), [slides, activeSlideIdx, selectedShapeIdx, onShapeFormatChange]);
+  }), [slides, activeSlideIdx, selectedShapeIdx, isPresentMode, onSlideAdd, onSlideDelete, onSlideDuplicate, onSlideMove, onSlideToggleVisibility, onSlideNotesUpdate, onShapeAdd, onShapeDelete, onShapeFormatChange, onSlideReplace, onAITranslate]);
 
   if (!activeSlide) {
     return <div className={styles.container}>No slides available</div>;
@@ -312,6 +380,26 @@ const SlideNavigator = forwardRef<SlideNavigatorHandle, SlideNavigatorProps>(fun
           if ((e.key === 'Delete' || e.key === 'Backspace') && selectedShapeIdx !== null && editingShape === null) {
             onShapeDelete(activeSlideIdx, selectedShapeIdx);
             setSelectedShapeIdx(null);
+          }
+
+          if (selectedShapeIdx !== null && editingShape === null) {
+            const shape = activeSlide.shapes[selectedShapeIdx];
+            if (!shape) return;
+            const step = e.shiftKey ? 10 : 1;
+            let dx = 0;
+            let dy = 0;
+            if (e.key === 'ArrowLeft') dx = -step;
+            if (e.key === 'ArrowRight') dx = step;
+            if (e.key === 'ArrowUp') dy = -step;
+            if (e.key === 'ArrowDown') dy = step;
+            if (dx !== 0 || dy !== 0) {
+              e.preventDefault();
+              onShapeFormatChange(activeSlideIdx, selectedShapeIdx, {
+                ...shape,
+                x: Math.max(0, Math.min(slideWidth - shape.width, shape.x + dx)),
+                y: Math.max(0, Math.min(slideHeight - shape.height, shape.y + dy)),
+              });
+            }
           }
         }}
       >

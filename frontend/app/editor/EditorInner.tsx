@@ -291,6 +291,46 @@ export default function EditorInner() {
     [updateDocModel]
   );
 
+  const handleSlideDuplicate = useCallback(
+    (slideIdx: number) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+
+        const target = prev.slides[slideIdx];
+        if (!target) return prev;
+
+        const duplicate: PresentationSlide = {
+          ...target,
+          slideNumber: 0,
+          shapes: target.shapes.map((shape) => ({
+            ...shape,
+            formatting: { ...shape.formatting },
+          })),
+        };
+
+        const updatedSlides = [...prev.slides];
+        updatedSlides.splice(slideIdx + 1, 0, duplicate);
+        updatedSlides.forEach((s, idx) => {
+          s.slideNumber = idx + 1;
+        });
+
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
+  const handleSlideReplace = useCallback(
+    (slideIdx: number, slide: PresentationSlide) => {
+      updateDocModel((prev) => {
+        if (!prev || !isPresentationDocument(prev)) return prev;
+        const updatedSlides = prev.slides.map((s, idx) => (idx === slideIdx ? slide : s));
+        return { ...prev, slides: updatedSlides };
+      });
+    },
+    [updateDocModel]
+  );
+
   const handleSlideDelete = useCallback(
     (slideIdx: number) => {
       updateDocModel((prev) => {
@@ -579,7 +619,9 @@ export default function EditorInner() {
             onTextChange={handleSlideTextChange}
             onShapeFormatChange={handleSlideShapeFormatChange}
             onSlideAdd={handleSlideAdd}
+            onSlideDuplicate={handleSlideDuplicate}
             onSlideDelete={handleSlideDelete}
+            onSlideReplace={handleSlideReplace}
             onShapeAdd={handleShapeAdd}
             onShapeDelete={handleShapeDelete}
             onSlideMove={handleSlideMove}

@@ -157,10 +157,15 @@ export type PresentationToolAction =
   | { type: 'nextSlide' }
   | { type: 'prevSlide' }
   | { type: 'addSlide' }
+  | { type: 'duplicateSlide' }
   | { type: 'deleteSlide' }
   | { type: 'addShape' }
+  | { type: 'duplicateShape' }
   | { type: 'deleteShape' }
   | { type: 'align'; value: 'left' | 'center' | 'right' | 'justify' }
+  | { type: 'alignOnSlide'; value: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' }
+  | { type: 'bringToFront' }
+  | { type: 'sendToBack' }
   | { type: 'bullet' }
   | { type: 'addRect' }
   | { type: 'addEllipse' }
@@ -173,6 +178,10 @@ export type PresentationToolAction =
   | { type: 'moveSlideUp' }
   | { type: 'moveSlideDown' }
   | { type: 'toggleSlideVisibility' }
+  | { type: 'setShapeFillColor'; value: string }
+  | { type: 'setShapeBorderColor'; value: string }
+  | { type: 'setShapeBorderWidth'; value: number }
+  | { type: 'nudgeShape'; dx: number; dy: number }
   | { type: 'togglePresentMode' }
   | { type: 'updateNotes'; value: string }
   | { type: 'aiTranslate' };

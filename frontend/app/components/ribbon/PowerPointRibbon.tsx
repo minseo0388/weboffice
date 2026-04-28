@@ -17,6 +17,10 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
     onAction({ type: 'addImage', value: url });
   };
 
+  const handleNudge = (dx: number, dy: number) => {
+    onAction({ type: 'nudgeShape', dx, dy });
+  };
+
   return (
     <div className={styles.ribbonRoot}>
       <div className={styles.tabRow}>
@@ -37,6 +41,7 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'prevSlide' })}>Prev</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'nextSlide' })}>Next</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'addSlide' })}>New Slide</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'duplicateSlide' })}>Duplicate</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'deleteSlide' })}>Delete</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'moveSlideUp' })}>Move Up</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'moveSlideDown' })}>Move Down</button>
@@ -53,6 +58,7 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'addStar' })}>Star</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'addRoundRect' })}>Round</button>
           <button className={styles.toolBtn} onClick={handleInsertImage}>Image</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'duplicateShape' })}>Duplicate Shape</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'deleteShape' })}>Delete Shape</button>
         </div>
 
@@ -78,6 +84,37 @@ export default function PowerPointRibbon({ saveStatus, lastSavedTime, onAction, 
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'align', value: 'center' })}>Center</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'align', value: 'right' })}>Right</button>
           <button className={styles.toolBtn} onClick={() => onAction({ type: 'align', value: 'justify' })}>Justify</button>
+        </div>
+
+        <div className={styles.group}>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'left' })}>Slide Left</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'center' })}>Slide Center</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'right' })}>Slide Right</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'top' })}>Top</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'middle' })}>Middle</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'alignOnSlide', value: 'bottom' })}>Bottom</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'bringToFront' })}>Bring Front</button>
+          <button className={styles.toolBtn} onClick={() => onAction({ type: 'sendToBack' })}>Send Back</button>
+        </div>
+
+        <div className={styles.group}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+            Fill
+            <input type="color" onChange={(e) => onAction({ type: 'setShapeFillColor', value: e.target.value })} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+            Border
+            <input type="color" onChange={(e) => onAction({ type: 'setShapeBorderColor', value: e.target.value })} />
+          </label>
+          <select className={styles.select} defaultValue="2" onChange={(e) => onAction({ type: 'setShapeBorderWidth', value: Number(e.target.value) })}>
+            {[0, 1, 2, 3, 4, 6, 8].map((width) => (
+              <option key={width} value={width}>Border {width}px</option>
+            ))}
+          </select>
+          <button className={styles.toolBtn} onClick={() => handleNudge(-10, 0)}>◀10</button>
+          <button className={styles.toolBtn} onClick={() => handleNudge(10, 0)}>10▶</button>
+          <button className={styles.toolBtn} onClick={() => handleNudge(0, -10)}>▲10</button>
+          <button className={styles.toolBtn} onClick={() => handleNudge(0, 10)}>10▼</button>
         </div>
 
         <div className={styles.group}>
