@@ -43,6 +43,17 @@ import kr.dogfoot.hwplib.object.docinfo.FaceName;
 import kr.dogfoot.hwplib.object.docinfo.ParaShape;
 import kr.dogfoot.hwplib.object.docinfo.Numbering;
 import kr.dogfoot.hwplib.object.docinfo.Style;
+import kr.dogfoot.hwplib.object.docinfo.borderfill.BorderFillProperty;
+import kr.dogfoot.hwplib.object.docinfo.borderfill.BorderThickness;
+import kr.dogfoot.hwplib.object.docinfo.borderfill.BorderType;
+import kr.dogfoot.hwplib.object.docinfo.borderfill.fillinfo.FillType;
+import kr.dogfoot.hwplib.object.docinfo.facename.FontType;
+import kr.dogfoot.hwplib.object.docinfo.numbering.LevelNumbering;
+import kr.dogfoot.hwplib.object.docinfo.numbering.ParagraphAlignment;
+import kr.dogfoot.hwplib.object.docinfo.numbering.ParagraphHeadInfo;
+import kr.dogfoot.hwplib.object.docinfo.numbering.ParagraphHeadInfoProperty;
+import kr.dogfoot.hwplib.object.docinfo.numbering.ParagraphNumberFormat;
+import kr.dogfoot.hwplib.object.docinfo.numbering.ValueType;
 import kr.dogfoot.hwplib.object.docinfo.charshape.UnderLineSort;
 import kr.dogfoot.hwplib.object.docinfo.parashape.Alignment;
 import kr.dogfoot.hwplib.reader.HWPReader;
@@ -493,6 +504,7 @@ public class HwpService {
         try {
             Files.write(temp.toPath(), originalBytes);
             HWPFile hwp = HWPReader.fromFile(temp.getAbsolutePath());
+            applyDocInfoUpdates(hwp, docModel);
             List<Map<String, Object>> sections =
                 (List<Map<String, Object>>) docModel.get("sections");
             if (sections == null) return toBytes(hwp);
@@ -530,6 +542,282 @@ public class HwpService {
         } finally {
             temp.delete();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyDocInfoUpdates(HWPFile hwp, Map<String, Object> docModel) {
+        if (docModel == null) return;
+        Object docInfoObj = docModel.get("docInfo");
+        if (!(docInfoObj instanceof Map<?, ?> docInfoMap)) return;
+
+        DocInfo docInfo = hwp.getDocInfo();
+        applyFaceNameList(docInfo.getHangulFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("hangulFaceNames"), docInfo::addNewHangulFaceName);
+        applyFaceNameList(docInfo.getEnglishFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("englishFaceNames"), docInfo::addNewEnglishFaceName);
+        applyFaceNameList(docInfo.getHanjaFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("hanjaFaceNames"), docInfo::addNewHanjaFaceName);
+        applyFaceNameList(docInfo.getJapaneseFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("japaneseFaceNames"), docInfo::addNewJapaneseFaceName);
+        applyFaceNameList(docInfo.getEtcFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("etcFaceNames"), docInfo::addNewEtcFaceName);
+        applyFaceNameList(docInfo.getSymbolFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("symbolFaceNames"), docInfo::addNewSymbolFaceName);
+        applyFaceNameList(docInfo.getUserFaceNameList(), (List<Map<String, Object>>) docInfoMap.get("userFaceNames"), docInfo::addNewUserFaceName);
+
+        applyBorderFillList(docInfo.getBorderFillList(), (List<Map<String, Object>>) docInfoMap.get("borderFills"), docInfo::addNewBorderFill);
+        applyCharShapeList(docInfo, (List<Map<String, Object>>) docInfoMap.get("charShapes"));
+        applyParaShapeList(docInfo, (List<Map<String, Object>>) docInfoMap.get("paraShapes"));
+        applyStyleList(docInfo, (List<Map<String, Object>>) docInfoMap.get("styles"));
+        applyNumberingList(docInfo, (List<Map<String, Object>>) docInfoMap.get("numberings"));
+        applyBulletList(docInfo, (List<Map<String, Object>>) docInfoMap.get("bullets"));
+    }
+
+    private void applyFaceNameList(List<FaceName> target,
+                                   List<Map<String, Object>> source,
+                                   java.util.function.Supplier<FaceName> creator) {
+        if (source == null) return;
+        for (int i = 0; i < source.size(); i++) {
+            FaceName faceName = i < target.size() ? target.get(i) : creator.get();
+            Map<String, Object> item = source.get(i);
+            if (item.get("name") instanceof String name) faceName.setName(name);
+            if (item.get("baseFontName") instanceof String baseFontName) faceName.setBaseFontName(baseFontName);
+            if (item.get("substituteFontName") instanceof String substituteFontName) faceName.setSubstituteFontName(substituteFontName);
+            if (item.get("substituteFontType") instanceof String substituteFontType) {
+                try {
+                    faceName.setSubstituteFontType(FontType.valueOf(substituteFontType));
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private void applyBorderFillList(List<BorderFill> target,
+                                     List<Map<String, Object>> source,
+                                     java.util.function.Supplier<BorderFill> creator) {
+        if (source == null) return;
+        for (int i = 0; i < source.size(); i++) {
+            BorderFill borderFill = i < target.size() ? target.get(i) : creator.get();
+            Map<String, Object> item = source.get(i);
+            if (item.get("property") instanceof Number property) {
+                borderFill.getProperty().setValue(property.intValue());
+            }
+            applyEachBorder(borderFill.getLeftBorder(), item, "leftBorder", "leftBorderThickness");
+            applyEachBorder(borderFill.getRightBorder(), item, "rightBorder", "rightBorderThickness");
+            applyEachBorder(borderFill.getTopBorder(), item, "topBorder", "topBorderThickness");
+            applyEachBorder(borderFill.getBottomBorder(), item, "bottomBorder", "bottomBorderThickness");
+            if (item.get("fillType") instanceof Number fillType) {
+                borderFill.getFillInfo().getType().setValue(fillType.longValue());
+            }
+        }
+    }
+
+    private void applyEachBorder(kr.dogfoot.hwplib.object.docinfo.borderfill.EachBorder border,
+                                 Map<String, Object> item,
+                                 String typeKey,
+                                 String thicknessKey) {
+        if (item.get(typeKey) instanceof String type) {
+            try {
+                border.setType(BorderType.valueOf(type));
+            } catch (Exception ignored) {}
+        }
+        if (item.get(thicknessKey) instanceof String thickness) {
+            try {
+                border.setThickness(BorderThickness.valueOf(thickness));
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void applyCharShapeList(DocInfo docInfo, List<Map<String, Object>> source) {
+        if (source == null) return;
+        List<CharShape> target = docInfo.getCharShapeList();
+        for (int i = 0; i < source.size(); i++) {
+            CharShape charShape = i < target.size() ? target.get(i) : docInfo.addNewCharShape();
+            Map<String, Object> item = source.get(i);
+            if (item.get("baseSize") instanceof Number baseSize) charShape.setBaseSize(baseSize.intValue());
+            if (item.get("bold") instanceof Boolean bold) charShape.getProperty().setBold(bold);
+            if (item.get("italic") instanceof Boolean italic) charShape.getProperty().setItalic(italic);
+            if (item.get("superScript") instanceof Boolean superScript) charShape.getProperty().setSuperScript(superScript);
+            if (item.get("subScript") instanceof Boolean subScript) charShape.getProperty().setSubScript(subScript);
+            if (item.get("strikeLine") instanceof Boolean strikeLine) charShape.getProperty().setStrikeLine(strikeLine);
+            if (item.get("underlineSort") instanceof String underlineSort) {
+                try {
+                    charShape.getProperty().setUnderLineSort(UnderLineSort.valueOf(underlineSort));
+                } catch (Exception ignored) {}
+            }
+            if (item.get("fontIds") instanceof List<?> fontIds && !fontIds.isEmpty()) {
+                int[] ids = toIntArray(fontIds);
+                try {
+                    charShape.getFaceNameIds().setArray(ids);
+                } catch (Exception ignored) {
+                    charShape.getFaceNameIds().setForAll(ids[0]);
+                }
+            }
+            if (item.get("charSpaces") instanceof List<?> charSpaces && !charSpaces.isEmpty()) {
+                byte[] values = toByteArray(charSpaces);
+                try {
+                    charShape.getCharSpaces().setArray(values);
+                } catch (Exception ignored) {
+                    charShape.getCharSpaces().setForAll(values[0]);
+                }
+            }
+            if (item.get("ratios") instanceof List<?> ratios && !ratios.isEmpty()) {
+                short[] values = toShortArray(ratios);
+                try {
+                    charShape.getRatios().setArray(values);
+                } catch (Exception ignored) {
+                    charShape.getRatios().setForAll(values[0]);
+                }
+            }
+            if (item.get("textColor") instanceof String textColor) applyColor(charShape.getCharColor(), textColor);
+            if (item.get("underlineColor") instanceof String underlineColor) applyColor(charShape.getUnderLineColor(), underlineColor);
+            if (item.get("shadeColor") instanceof String shadeColor) applyColor(charShape.getShadeColor(), shadeColor);
+        }
+    }
+
+    private void applyParaShapeList(DocInfo docInfo, List<Map<String, Object>> source) {
+        if (source == null) return;
+        List<ParaShape> target = docInfo.getParaShapeList();
+        for (int i = 0; i < source.size(); i++) {
+            ParaShape paraShape = i < target.size() ? target.get(i) : docInfo.addNewParaShape();
+            Map<String, Object> item = source.get(i);
+            if (item.get("alignment") instanceof String alignment) {
+                try {
+                    paraShape.getProperty1().setAlignment(Alignment.valueOf(alignment));
+                } catch (Exception ignored) {}
+            }
+            if (item.get("leftMargin") instanceof Number leftMargin) paraShape.setLeftMargin(leftMargin.intValue());
+            if (item.get("rightMargin") instanceof Number rightMargin) paraShape.setRightMargin(rightMargin.intValue());
+            if (item.get("indent") instanceof Number indent) paraShape.setIndent(indent.intValue());
+            if (item.get("topParaSpace") instanceof Number topParaSpace) paraShape.setTopParaSpace(topParaSpace.intValue());
+            if (item.get("bottomParaSpace") instanceof Number bottomParaSpace) paraShape.setBottomParaSpace(bottomParaSpace.intValue());
+            if (item.get("lineSpace") instanceof Number lineSpace) paraShape.setLineSpace(lineSpace.intValue());
+            if (item.get("lineSpace2") instanceof Number lineSpace2) paraShape.setLineSpace2(lineSpace2.intValue());
+            if (item.get("paraLevel") instanceof Number paraLevel) paraShape.setParaLevel(paraLevel.intValue());
+        }
+    }
+
+    private void applyStyleList(DocInfo docInfo, List<Map<String, Object>> source) {
+        if (source == null) return;
+        List<Style> target = docInfo.getStyleList();
+        for (int i = 0; i < source.size(); i++) {
+            Style style = i < target.size() ? target.get(i) : docInfo.addNewStyle();
+            Map<String, Object> item = source.get(i);
+            if (item.get("hangulName") instanceof String hangulName) style.setHangulName(hangulName);
+            if (item.get("englishName") instanceof String englishName) style.setEnglishName(englishName);
+            if (item.get("nextStyleId") instanceof Number nextStyleId) style.setNextStyleId(nextStyleId.shortValue());
+            if (item.get("languageId") instanceof Number languageId) style.setLanguageId(languageId.shortValue());
+            if (item.get("paraShapeId") instanceof Number paraShapeId) style.setParaShapeId(paraShapeId.intValue());
+            if (item.get("charShapeId") instanceof Number charShapeId) style.setCharShapeId(charShapeId.intValue());
+        }
+    }
+
+    private void applyNumberingList(DocInfo docInfo, List<Map<String, Object>> source) {
+        if (source == null) return;
+        List<Numbering> target = docInfo.getNumberingList();
+        for (int i = 0; i < source.size(); i++) {
+            Numbering numbering = i < target.size() ? target.get(i) : docInfo.addNewNumbering();
+            Map<String, Object> item = source.get(i);
+            if (item.get("startNumber") instanceof Number startNumber) numbering.setStartNumber(startNumber.intValue());
+            if (item.get("levels") instanceof Number levels) {
+                ensureLevelNumberingCount(numbering, levels.intValue());
+            }
+            if (item.get("levelStartNumbers") instanceof List<?> levelStartNumbers) {
+                ensureLevelNumberingCount(numbering, levelStartNumbers.size());
+                for (int levelIndex = 0; levelIndex < levelStartNumbers.size() && levelIndex < numbering.getLevelNumberingList().size(); levelIndex++) {
+                    Object value = levelStartNumbers.get(levelIndex);
+                    if (value instanceof Number start) {
+                        numbering.getLevelNumberingList().get(levelIndex).setStartNumber(start.longValue());
+                    }
+                }
+            }
+        }
+    }
+
+    private void ensureLevelNumberingCount(Numbering numbering, int count) {
+        while (numbering.getLevelNumberingList().size() < count) {
+            numbering.getLevelNumberingList().add(new LevelNumbering());
+        }
+    }
+
+    private void applyBulletList(DocInfo docInfo, List<Map<String, Object>> source) {
+        if (source == null) return;
+        List<Bullet> target = docInfo.getBulletList();
+        for (int i = 0; i < source.size(); i++) {
+            Bullet bullet = i < target.size() ? target.get(i) : docInfo.addNewBullet();
+            Map<String, Object> item = source.get(i);
+            if (item.get("imageBullet") instanceof Boolean imageBullet) bullet.setImageBullet(imageBullet);
+            if (item.get("bulletChar") instanceof String bulletChar && bullet.getBulletChar() != null) {
+                bullet.getBulletChar().fromUTF16LEString(bulletChar);
+            }
+            if (item.get("checkBulletChar") instanceof String checkBulletChar && bullet.getCheckBulletChar() != null) {
+                bullet.getCheckBulletChar().fromUTF16LEString(checkBulletChar);
+            }
+            if (item.get("paragraphHeadInfo") instanceof Map<?, ?> paragraphHeadInfoMap) {
+                applyParagraphHeadInfo(bullet.getParagraphHeadInfo(), paragraphHeadInfoMap);
+            }
+        }
+    }
+
+    private void applyParagraphHeadInfo(ParagraphHeadInfo paragraphHeadInfo, Map<?, ?> item) {
+        if (paragraphHeadInfo == null || item == null) return;
+        ParagraphHeadInfoProperty property = paragraphHeadInfo.getProperty();
+        if (item.get("value") instanceof Number value) property.setValue(value.longValue());
+        if (item.get("paragraphAlignment") instanceof String paragraphAlignment) {
+            try {
+                property.setParagraphAlignment(ParagraphAlignment.valueOf(paragraphAlignment));
+            } catch (Exception ignored) {}
+        }
+        if (item.get("followStringWidth") instanceof Boolean followStringWidth) property.setFollowStringWidth(followStringWidth);
+        if (item.get("autoIndent") instanceof Boolean autoIndent) property.setAutoIndent(autoIndent);
+        if (item.get("valueTypeForDistanceFromBody") instanceof String valueTypeForDistanceFromBody) {
+            try {
+                property.setValueTypeForDistanceFromBody(ValueType.valueOf(valueTypeForDistanceFromBody));
+            } catch (Exception ignored) {}
+        }
+        if (item.get("paragraphNumberFormat") instanceof String paragraphNumberFormat) {
+            try {
+                property.setParagraphNumberFormat(ParagraphNumberFormat.valueOf(paragraphNumberFormat));
+            } catch (Exception ignored) {}
+        }
+        if (item.get("correctionValueForWidth") instanceof Number correctionValueForWidth) {
+            paragraphHeadInfo.setCorrectionValueForWidth(correctionValueForWidth.intValue());
+        }
+        if (item.get("distanceFromBody") instanceof Number distanceFromBody) {
+            paragraphHeadInfo.setDistanceFromBody(distanceFromBody.intValue());
+        }
+        if (item.get("charShapeID") instanceof Number charShapeID) {
+            paragraphHeadInfo.setCharShapeID(charShapeID.longValue());
+        }
+    }
+
+    private void applyColor(kr.dogfoot.hwplib.object.etc.Color4Byte color, String hex) {
+        if (color == null || hex == null || !hex.startsWith("#") || hex.length() != 7) return;
+        try {
+            color.setR((short) Integer.parseInt(hex.substring(1, 3), 16));
+            color.setG((short) Integer.parseInt(hex.substring(3, 5), 16));
+            color.setB((short) Integer.parseInt(hex.substring(5, 7), 16));
+        } catch (Exception ignored) {}
+    }
+
+    private int[] toIntArray(List<?> values) {
+        int[] array = new int[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            Object value = values.get(i);
+            array[i] = value instanceof Number number ? number.intValue() : 0;
+        }
+        return array;
+    }
+
+    private byte[] toByteArray(List<?> values) {
+        byte[] array = new byte[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            Object value = values.get(i);
+            array[i] = value instanceof Number number ? number.byteValue() : 0;
+        }
+        return array;
+    }
+
+    private short[] toShortArray(List<?> values) {
+        short[] array = new short[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            Object value = values.get(i);
+            array[i] = value instanceof Number number ? number.shortValue() : 0;
+        }
+        return array;
     }
 
     /** 문단 텍스트 교체 */

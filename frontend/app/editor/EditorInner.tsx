@@ -16,6 +16,8 @@ import {
   FileType,
   DocumentModel,
   SaveStatus,
+  DEFAULT_PAGE_SETTINGS,
+  PageSettings,
   isPresentationDocument,
   isSpreadsheetDocument,
   isTextDocument,
@@ -59,6 +61,34 @@ const PPT_EXPORT_OPTIONS: ExportOption[] = [
   { format: 'pptx', label: 'PowerPoint (.pptx)', icon: '📊' },
   { format: 'html', label: 'HTML 프레젠테이션',   icon: '🌐' },
 ];
+
+function pageSetupToPageSettings(pageSetup?: Record<string, number>): PageSettings {
+  return {
+    ...DEFAULT_PAGE_SETTINGS,
+    widthMm: pageSetup?.paperWidth,
+    heightMm: pageSetup?.paperHeight,
+    margins: {
+      ...DEFAULT_PAGE_SETTINGS.margins,
+      top: pageSetup?.topMargin ?? DEFAULT_PAGE_SETTINGS.margins.top,
+      bottom: pageSetup?.bottomMargin ?? DEFAULT_PAGE_SETTINGS.margins.bottom,
+      left: pageSetup?.leftMargin ?? DEFAULT_PAGE_SETTINGS.margins.left,
+      right: pageSetup?.rightMargin ?? DEFAULT_PAGE_SETTINGS.margins.right,
+      header: pageSetup?.headerMargin ?? DEFAULT_PAGE_SETTINGS.margins.header,
+      footer: pageSetup?.footerMargin ?? DEFAULT_PAGE_SETTINGS.margins.footer,
+      gutter: pageSetup?.gutterMargin ?? DEFAULT_PAGE_SETTINGS.margins.gutter,
+    },
+  };
+}
+
+function normalizeHwpDocumentModel(model: HwpDocumentModel): HwpDocumentModel {
+  if (model.pageSettings) return model;
+  const pageSetup = model.sections?.[0]?.pageSetup;
+  if (!pageSetup) return model;
+  return {
+    ...model,
+    pageSettings: pageSetupToPageSettings(pageSetup),
+  };
+}
 
 /**
  * EditorInner: The core orchestration component for the WebOffice suite.
@@ -151,14 +181,17 @@ export default function EditorInner() {
         }
         if (!parseRes.ok) throw new Error('Failed to parse document');
         const parsed = (await parseRes.json()) as DocumentModel & { readOnly?: boolean; readOnlyReason?: string };
+        const normalized = fileName.toLowerCase().endsWith('.hwp')
+          ? normalizeHwpDocumentModel(parsed as HwpDocumentModel)
+          : parsed;
 
         // HWP binary — viewer mode only
         if (parsed.readOnly) {
           setReadOnly(true);
         }
 
-        setDocModel(parsed);
-        historyRef.current = [parsed];
+        setDocModel(normalized);
+        historyRef.current = [normalized];
         historyIdxRef.current = 0;
         setLoading(false);
       } catch (err) {
@@ -694,6 +727,29 @@ export default function EditorInner() {
             getDocumentModel={() => docModel}
             exportOptions={currentFileType === 'hwp' ? HWP_EXPORT_OPTIONS : HWPX_EXPORT_OPTIONS}
           />
+          {isHwpFile && hwpDocInfo && (
+            <div style={{
+              margin: '10px 20px 0',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              padding: '10px 12px',
+              borderRadius: '14px',
+              border: '1px solid rgba(122,162,247,0.22)',
+              background: 'linear-gradient(180deg, rgba(15,23,42,0.9), rgba(15,23,42,0.78))',
+              color: '#cbd5e1',
+              fontSize: '12px',
+            }}>
+              <span style={{ color: '#7aa2f7', fontWeight: 700 }}>HWP docInfo</span>
+              <span>글꼴 {hwpFaceNameCount}</span>
+              <span>문자서식 {hwpCharShapeCount}</span>
+              <span>문단서식 {hwpParaShapeCount}</span>
+              <span>윤곽/테두리 {hwpBorderFillCount}</span>
+              <span>스타일 {hwpStyleCount}</span>
+              <span>번호 {hwpNumberingCount}</span>
+              <span>글머리표 {hwpBulletCount}</span>
+            </div>
+          )}
         </div>
       ) : (
         <WordRibbon

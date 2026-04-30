@@ -1,15 +1,57 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { HwpDocumentModel, HwpControlInfo, Paragraph } from '../types/document';
+import { DEFAULT_PAGE_SETTINGS, HwpDocumentModel, PageSettings, Paragraph } from '../types/document';
 
 interface HwpInspectorPanelProps {
   model: HwpDocumentModel;
   onModelChange: (model: HwpDocumentModel) => void;
 }
 
-type InspectorTab = 'structure' | 'tables' | 'fields' | 'numbering' | 'headers';
+type InspectorTab = 'structure' | 'tables' | 'fields' | 'numbering' | 'bullets' | 'headers';
 type ControlEntry = NonNullable<Paragraph['controls']>[number];
+
+function pageSetupToPageSettings(pageSetup?: Record<string, number>): PageSettings {
+  return {
+    ...DEFAULT_PAGE_SETTINGS,
+    widthMm: pageSetup?.paperWidth,
+    heightMm: pageSetup?.paperHeight,
+    margins: {
+      ...DEFAULT_PAGE_SETTINGS.margins,
+      top: pageSetup?.topMargin ?? DEFAULT_PAGE_SETTINGS.margins.top,
+      bottom: pageSetup?.bottomMargin ?? DEFAULT_PAGE_SETTINGS.margins.bottom,
+      left: pageSetup?.leftMargin ?? DEFAULT_PAGE_SETTINGS.margins.left,
+      right: pageSetup?.rightMargin ?? DEFAULT_PAGE_SETTINGS.margins.right,
+      header: pageSetup?.headerMargin ?? DEFAULT_PAGE_SETTINGS.margins.header,
+      footer: pageSetup?.footerMargin ?? DEFAULT_PAGE_SETTINGS.margins.footer,
+      gutter: pageSetup?.gutterMargin ?? DEFAULT_PAGE_SETTINGS.margins.gutter,
+    },
+  };
+}
+
+function pageSettingsToPageSetup(pageSettings: PageSettings): Record<string, number> {
+  const margins = pageSettings.margins;
+  const setup: Record<string, number> = {};
+  if (typeof pageSettings.widthMm === 'number') setup.paperWidth = pageSettings.widthMm;
+  if (typeof pageSettings.heightMm === 'number') setup.paperHeight = pageSettings.heightMm;
+  setup.leftMargin = margins.left;
+  setup.rightMargin = margins.right;
+  setup.topMargin = margins.top;
+  setup.bottomMargin = margins.bottom;
+  setup.headerMargin = margins.header ?? 0;
+  setup.footerMargin = margins.footer ?? 0;
+  setup.gutterMargin = margins.gutter ?? 0;
+  return setup;
+}
+
+function syncHwpPageSettings(draft: HwpDocumentModel, pageSettings: PageSettings) {
+  draft.pageSettings = pageSettings;
+  if (!draft.sections.length) return;
+  draft.sections[0] = {
+    ...draft.sections[0],
+    pageSetup: pageSettingsToPageSetup(pageSettings),
+  };
+}
 
 function cloneModel(model: HwpDocumentModel): HwpDocumentModel {
   return JSON.parse(JSON.stringify(model)) as HwpDocumentModel;
@@ -101,11 +143,7 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
     });
   };
 
-  const currentPageSettings = model.pageSettings ?? {
-    size: 'A4' as const,
-    orientation: 'portrait' as const,
-    margins: { top: 25, bottom: 25, left: 30, right: 30, header: 15, footer: 15 },
-  };
+  const currentPageSettings = model.pageSettings ?? pageSetupToPageSettings(model.sections[0]?.pageSetup);
 
   return (
     <section style={{
@@ -124,7 +162,7 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
           </div>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          {(['structure', 'tables', 'fields', 'numbering', 'headers'] as InspectorTab[]).map((tab) => (
+          {(['structure', 'tables', 'fields', 'numbering', 'bullets', 'headers'] as InspectorTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -141,7 +179,8 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
               {tab === 'structure' && '구조'}
               {tab === 'tables' && '표'}
               {tab === 'fields' && '필드'}
-              {tab === 'numbering' && '번호/글머리표'}
+              {tab === 'numbering' && '번호매기기'}
+              {tab === 'bullets' && '글머리표'}
               {tab === 'headers' && '머리말/꼬리말'}
             </button>
           ))}
@@ -157,6 +196,8 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
             ['글꼴', model.docInfo?.hangulFaceNames?.length ?? 0],
             ['문자서식', model.docInfo?.charShapes?.length ?? 0],
             ['문단서식', model.docInfo?.paraShapes?.length ?? 0],
+            ['번호', model.docInfo?.numberings?.length ?? 0],
+            ['글머리표', model.docInfo?.bullets?.length ?? 0],
           ].map(([label, value]) => (
             <div key={String(label)} style={{ padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: '11px', color: '#94a3b8' }}>{label as string}</div>
@@ -279,6 +320,17 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
               <button onClick={() => applyParagraphListType('none')} style={actionButtonStyle}>전체 해제</button>
             </div>
           </div>
+          <div style={{ display: 'grid', gap: '8px' }}>
+            {(model.docInfo?.numberings ?? []).map((numbering, index) => (
+              <div key={`numbering-${index}`} style={{ padding: '10px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 700 }}>번호 서식 {index + 1}</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>시작 번호 {numbering.startNumber ?? 1}</div>
+                </div>
+                <div style={{ fontSize: '11px', color: '#7aa2f7' }}>{numbering.levels ?? 0}개 레벨</div>
+              </div>
+            ))}
+          </div>
           <div style={{ display: 'grid', gap: '8px', maxHeight: '380px', overflow: 'auto', paddingRight: '4px' }}>
             {model.sections.flatMap((section, sectionIndex) => section.paragraphs.map((paragraph, paragraphIndex) => ({ sectionIndex, paragraphIndex, paragraph }))).map(({ sectionIndex, paragraphIndex, paragraph }) => (
               <div key={`${sectionIndex}-${paragraphIndex}`} style={{ padding: '10px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'grid', gap: '8px' }}>
@@ -303,6 +355,46 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
         </div>
       )}
 
+      {activeTab === 'bullets' && (
+        <div style={{ marginTop: '14px', display: 'grid', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ fontSize: '12px', color: '#94a3b8' }}>문단 글머리표와 HWP bullet catalog</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <button onClick={() => applyParagraphListType('bullet')} style={actionButtonStyle}>글머리표 적용</button>
+              <button onClick={() => applyParagraphListType('none')} style={actionButtonStyle}>해제</button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: '8px' }}>
+            {(model.docInfo?.bullets ?? []).map((bullet, index) => (
+              <div key={`bullet-${index}`} style={{ padding: '10px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 700 }}>글머리표 {index + 1}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                      문자 {bullet.bulletChar ?? '—'} · 체크 {bullet.checkBulletChar ?? '—'}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#7aa2f7' }}>
+                    {bullet.imageBullet ? '이미지 글머리표' : '문자 글머리표'}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(model.docInfo?.bullets ?? []).length === 0 && (
+              <div style={{ color: '#94a3b8', fontSize: '12px' }}>이 문서에서 글머리표 catalog가 감지되지 않았습니다.</div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gap: '8px', maxHeight: '320px', overflow: 'auto', paddingRight: '4px' }}>
+            {model.sections.flatMap((section, sectionIndex) => section.paragraphs.map((paragraph, paragraphIndex) => ({ sectionIndex, paragraphIndex, paragraph }))).filter(({ paragraph }) => paragraph.listType === 'bullet').map(({ sectionIndex, paragraphIndex, paragraph }) => (
+              <div key={`bullet-paragraph-${sectionIndex}-${paragraphIndex}`} style={{ padding: '10px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700 }}>섹션 {sectionIndex + 1}, 문단 {paragraphIndex + 1}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>{getParagraphLabel(paragraph)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {activeTab === 'headers' && (
         <div style={{ marginTop: '14px', display: 'grid', gap: '12px' }}>
           <div style={{ display: 'grid', gap: '10px' }}>
@@ -310,7 +402,9 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
               머리말 텍스트
               <input
                 value={currentPageSettings.headerText ?? ''}
-                onChange={(e) => updateModel((draft) => { draft.pageSettings = { ...(draft.pageSettings || currentPageSettings), headerText: e.target.value }; })}
+                onChange={(e) => updateModel((draft) => {
+                  syncHwpPageSettings(draft, { ...currentPageSettings, headerText: e.target.value });
+                })}
                 placeholder="예: 문서 제목"
                 style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(15,23,42,0.9)', color: '#fff' }}
               />
@@ -319,7 +413,9 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
               꼬리말 텍스트
               <input
                 value={currentPageSettings.footerText ?? ''}
-                onChange={(e) => updateModel((draft) => { draft.pageSettings = { ...(draft.pageSettings || currentPageSettings), footerText: e.target.value }; })}
+                onChange={(e) => updateModel((draft) => {
+                  syncHwpPageSettings(draft, { ...currentPageSettings, footerText: e.target.value });
+                })}
                 placeholder="예: 페이지 번호 / 회사명"
                 style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(15,23,42,0.9)', color: '#fff' }}
               />
@@ -338,13 +434,14 @@ export default function HwpInspectorPanel({ model, onModelChange }: HwpInspector
                   type="number"
                   value={((currentPageSettings.margins as unknown as Record<string, number>)[key]) ?? 0}
                   onChange={(e) => updateModel((draft) => {
-                    draft.pageSettings = {
-                      ...(draft.pageSettings || currentPageSettings),
+                    const nextSettings: PageSettings = {
+                      ...currentPageSettings,
                       margins: {
-                        ...(draft.pageSettings?.margins || currentPageSettings.margins),
+                        ...currentPageSettings.margins,
                         [key]: Number(e.target.value),
                       },
                     };
+                    syncHwpPageSettings(draft, nextSettings);
                   })}
                   style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(15,23,42,0.9)', color: '#fff' }}
                 />
