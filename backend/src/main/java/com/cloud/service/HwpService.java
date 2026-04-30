@@ -1,14 +1,24 @@
 package com.cloud.service;
 
+import kr.dogfoot.hwplib.object.bodytext.control.Control;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlType;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControl;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControlType;
 import kr.dogfoot.hwplib.object.HWPFile;
 import kr.dogfoot.hwplib.object.bodytext.Section;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.Paragraph;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.charshape.ParaCharShape;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.text.HWPChar;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.text.HWPCharNormal;
+import kr.dogfoot.hwplib.object.bodytext.paragraph.text.ParaText;
+import kr.dogfoot.hwplib.object.docinfo.BorderFill;
 import kr.dogfoot.hwplib.object.docinfo.CharShape;
+import kr.dogfoot.hwplib.object.docinfo.Bullet;
+import kr.dogfoot.hwplib.object.docinfo.DocInfo;
 import kr.dogfoot.hwplib.object.docinfo.FaceName;
 import kr.dogfoot.hwplib.object.docinfo.ParaShape;
+import kr.dogfoot.hwplib.object.docinfo.Numbering;
+import kr.dogfoot.hwplib.object.docinfo.Style;
 import kr.dogfoot.hwplib.object.docinfo.charshape.UnderLineSort;
 import kr.dogfoot.hwplib.object.docinfo.parashape.Alignment;
 import kr.dogfoot.hwplib.reader.HWPReader;
@@ -19,8 +29,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /**
  * HwpService — hwplib을 사용한 HWP 바이너리 파일 읽기/저장
@@ -39,6 +51,8 @@ import java.util.Map;
  *   ParaShape.getProperty1().setAlignment(Alignment.Left/Center/Right/Justify)
  *   ParaShape.setLineSpace(int 퍼센트)
  *   ParaShape.setTopParaSpace / setBottomParaSpace
+ *   Paragraph.getControlList()                    — 문단 내 컨트롤(표/도형/필드 등)
+ *   DocInfo.*List()                               — face name / border / char shape / para shape / style / numbering / bullet
  */
 @Service
 public class HwpService {
@@ -61,14 +75,15 @@ public class HwpService {
     private Map<String, Object> buildModel(HWPFile hwp, String title) {
         List<Map<String, Object>> sections = new ArrayList<>();
         List<Section> sectionList = hwp.getBodyText().getSectionList();
-        List<CharShape>  csLst = hwp.getDocInfo().getCharShapeList();
-        List<ParaShape>  psLst = hwp.getDocInfo().getParaShapeList();
+        DocInfo docInfo = hwp.getDocInfo();
+        List<CharShape>  csLst = docInfo.getCharShapeList();
+        List<ParaShape>  psLst = docInfo.getParaShapeList();
 
         for (Section section : sectionList) {
             List<Map<String, Object>> paragraphs = new ArrayList<>();
             for (int pi = 0; pi < section.getParagraphCount(); pi++) {
                 Paragraph para = section.getParagraph(pi);
-                paragraphs.add(extractPara(para, csLst, psLst));
+                paragraphs.add(extractPara(para, csLst, psLst, sections.size(), pi));
             }
             Map<String, Object> secMap = new java.util.LinkedHashMap<>();
             secMap.put("paragraphs", paragraphs);
@@ -81,12 +96,148 @@ public class HwpService {
         model.put("fileType",     "hwp");
         model.put("sectionCount", sections.size());
         model.put("sections",     sections);
+        model.put("docInfo",      extractDocInfo(docInfo));
         return model;
+    }
+
+    private Map<String, Object> extractDocInfo(DocInfo docInfo) {
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("hangulFaceNames", extractFaceNames(docInfo.getHangulFaceNameList()));
+        info.put("englishFaceNames", extractFaceNames(docInfo.getEnglishFaceNameList()));
+        info.put("hanjaFaceNames", extractFaceNames(docInfo.getHanjaFaceNameList()));
+        info.put("japaneseFaceNames", extractFaceNames(docInfo.getJapaneseFaceNameList()));
+        info.put("etcFaceNames", extractFaceNames(docInfo.getEtcFaceNameList()));
+        info.put("symbolFaceNames", extractFaceNames(docInfo.getSymbolFaceNameList()));
+        info.put("userFaceNames", extractFaceNames(docInfo.getUserFaceNameList()));
+        info.put("charShapes", extractCharShapes(docInfo.getCharShapeList()));
+        info.put("paraShapes", extractParaShapes(docInfo.getParaShapeList()));
+        info.put("borderFills", extractBorderFills(docInfo.getBorderFillList()));
+        info.put("styles", extractStyles(docInfo.getStyleList()));
+        info.put("numberings", extractNumberings(docInfo.getNumberingList()));
+        info.put("bullets", extractBullets(docInfo.getBulletList()));
+        return info;
+    }
+
+    private List<Map<String, Object>> extractFaceNames(List<FaceName> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (FaceName faceName : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", faceName.getName());
+            item.put("baseFontName", faceName.getBaseFontName());
+            item.put("substituteFontName", faceName.getSubstituteFontName());
+            item.put("substituteFontType", faceName.getSubstituteFontType() != null ? faceName.getSubstituteFontType().name() : null);
+            out.add(item);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> extractCharShapes(List<CharShape> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (CharShape cs : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("baseSize", cs.getBaseSize());
+            item.put("bold", cs.getProperty().isBold());
+            item.put("italic", cs.getProperty().isItalic());
+            item.put("superScript", cs.getProperty().isSuperScript());
+            item.put("subScript", cs.getProperty().isSubScript());
+            item.put("strikeLine", cs.getProperty().isStrikeLine());
+            item.put("underlineSort", cs.getProperty().getUnderLineSort() != null ? cs.getProperty().getUnderLineSort().name() : null);
+            item.put("fontIds", cs.getFaceNameIds().getArray());
+            item.put("charSpaces", cs.getCharSpaces().getArray());
+            item.put("ratios", cs.getRatios().getArray());
+            item.put("textColor", color4ToHex(cs.getCharColor()));
+            item.put("underlineColor", color4ToHex(cs.getUnderLineColor()));
+            item.put("shadeColor", color4ToHex(cs.getShadeColor()));
+            out.add(item);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> extractParaShapes(List<ParaShape> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ParaShape ps : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("alignment", ps.getProperty1().getAlignment() != null ? ps.getProperty1().getAlignment().name() : null);
+            item.put("leftMargin", ps.getLeftMargin());
+            item.put("rightMargin", ps.getRightMargin());
+            item.put("indent", ps.getIndent());
+            item.put("topParaSpace", ps.getTopParaSpace());
+            item.put("bottomParaSpace", ps.getBottomParaSpace());
+            item.put("lineSpace", ps.getLineSpace());
+            item.put("lineSpace2", ps.getLineSpace2());
+            item.put("paraLevel", ps.getParaLevel());
+            out.add(item);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> extractBorderFills(List<BorderFill> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (BorderFill borderFill : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("property", borderFill.getProperty() != null ? borderFill.getProperty().getValue() : null);
+            item.put("leftBorder", borderFill.getLeftBorder() != null ? borderFill.getLeftBorder().getType().name() : null);
+            item.put("leftBorderThickness", borderFill.getLeftBorder() != null && borderFill.getLeftBorder().getThickness() != null ? borderFill.getLeftBorder().getThickness().name() : null);
+            item.put("rightBorder", borderFill.getRightBorder() != null ? borderFill.getRightBorder().getType().name() : null);
+            item.put("rightBorderThickness", borderFill.getRightBorder() != null && borderFill.getRightBorder().getThickness() != null ? borderFill.getRightBorder().getThickness().name() : null);
+            item.put("topBorder", borderFill.getTopBorder() != null ? borderFill.getTopBorder().getType().name() : null);
+            item.put("topBorderThickness", borderFill.getTopBorder() != null && borderFill.getTopBorder().getThickness() != null ? borderFill.getTopBorder().getThickness().name() : null);
+            item.put("bottomBorder", borderFill.getBottomBorder() != null ? borderFill.getBottomBorder().getType().name() : null);
+            item.put("bottomBorderThickness", borderFill.getBottomBorder() != null && borderFill.getBottomBorder().getThickness() != null ? borderFill.getBottomBorder().getThickness().name() : null);
+            item.put("fillType", borderFill.getFillInfo() != null && borderFill.getFillInfo().getType() != null ? borderFill.getFillInfo().getType().getValue() : null);
+            out.add(item);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> extractStyles(List<Style> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Style style : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("hangulName", style.getHangulName());
+            item.put("englishName", style.getEnglishName());
+            item.put("nextStyleId", style.getNextStyleId());
+            item.put("languageId", style.getLanguageId());
+            item.put("paraShapeId", style.getParaShapeId());
+            item.put("charShapeId", style.getCharShapeId());
+            out.add(item);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> extractNumberings(List<Numbering> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Numbering numbering : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("startNumber", numbering.getStartNumber());
+            item.put("levels", numbering.getLevelNumberingList().size());
+            out.add(item);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> extractBullets(List<Bullet> list) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Bullet bullet : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("bulletChar", bullet.getBulletChar() != null ? bullet.getBulletChar().toString() : null);
+            item.put("imageBullet", bullet.getImageBullet());
+            item.put("checkBulletChar", bullet.getCheckBulletChar() != null ? bullet.getCheckBulletChar().toString() : null);
+            out.add(item);
+        }
+        return out;
+    }
+
+    private String color4ToHex(kr.dogfoot.hwplib.object.etc.Color4Byte color) {
+        if (color == null) return null;
+        return String.format("#%02X%02X%02X", color.getR(), color.getG(), color.getB());
     }
 
     private Map<String, Object> extractPara(Paragraph para,
                                              List<CharShape> csList,
-                                             List<ParaShape> psList) {
+                                             List<ParaShape> psList,
+                                             int sectionIndex,
+                                             int paragraphIndex) {
         // ── 텍스트 추출 ───────────────────────────────────────────────────
         StringBuilder sb = new StringBuilder();
         if (para.getText() != null) {
@@ -133,6 +284,14 @@ public class HwpService {
             }
         } catch (Exception ignored) {}
 
+        // ── 컨트롤 메타데이터 ───────────────────────────────────────────
+        List<Map<String, Object>> controls = new ArrayList<>();
+        try {
+            for (Control control : para.getControlList()) {
+                controls.add(extractControl(control, sectionIndex, paragraphIndex, sb.toString()));
+            }
+        } catch (Exception ignored) {}
+
         // ── 문단 서식 ─────────────────────────────────────────────────────
         String align       = "left";
         double lineSpace   = 1.6;
@@ -173,7 +332,27 @@ public class HwpService {
         m.put("lineSpacing",            lineSpace);
         m.put("paragraphSpacingBefore", spaceBefore);
         m.put("paragraphSpacingAfter",  spaceAfter);
+        if (!controls.isEmpty()) {
+            m.put("controls", controls);
+        }
         return m;
+    }
+
+    private Map<String, Object> extractControl(Control control, int sectionIndex, int paragraphIndex, String paragraphText) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        ControlType type = control.getType();
+        item.put("type", type != null ? type.name() : null);
+        item.put("ctrlId", type != null ? type.getCtrlId() : null);
+        item.put("isField", control.isField());
+        item.put("sectionIndex", sectionIndex);
+        item.put("paragraphIndex", paragraphIndex);
+        item.put("paragraphText", paragraphText);
+        if (control instanceof GsoControl gso) {
+            GsoControlType gsoType = gso.getGsoType();
+            item.put("gsoType", gsoType != null ? gsoType.name() : null);
+            item.put("gsoId", gso.getGsoId());
+        }
+        return item;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -227,13 +406,41 @@ public class HwpService {
         }
 
         if (hasNonNormal) {
-            // Preserve complex paragraph structure; editor currently doesn't support
-            // safe full replacement when controls are present.
+            // Preserve complex paragraph structure by only replacing normal chars in place.
+            replaceNormalCharsPreservingControls(para.getText(), newText);
             return;
         }
 
         para.getText().getCharList().clear();
         if (!newText.isEmpty()) para.getText().addString(newText);
+    }
+
+    private void replaceNormalCharsPreservingControls(ParaText text, String newText) {
+        List<HWPChar> original = new ArrayList<>(text.getCharList());
+        List<HWPChar> rebuilt = new ArrayList<>(original.size() + Math.max(0, newText.length() - original.size()));
+
+        int textIndex = 0;
+        for (HWPChar ch : original) {
+            if (ch instanceof HWPCharNormal) {
+                if (textIndex < newText.length()) {
+                    rebuilt.add(new HWPCharNormal(newText.charAt(textIndex++)));
+                }
+                // Drop trailing normal characters when the replacement text is shorter.
+            } else {
+                try {
+                    rebuilt.add(ch.clone());
+                } catch (Exception ignored) {
+                    rebuilt.add(ch);
+                }
+            }
+        }
+
+        while (textIndex < newText.length()) {
+            rebuilt.add(new HWPCharNormal(newText.charAt(textIndex++)));
+        }
+
+        text.getCharList().clear();
+        text.getCharList().addAll(rebuilt);
     }
 
     /** 문단 서식 적용 (CharShape + ParaShape 업데이트) */

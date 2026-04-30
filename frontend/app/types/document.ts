@@ -30,6 +30,7 @@ export interface Paragraph {
   paragraphSpacingBefore?: number; // 문단 위 간격 (px)
   paragraphSpacingAfter?: number;  // 문단 아래 간격 (px)
   pageBreak?: boolean;
+  controls?: HwpControlInfo[];
   /** Format-specific passthrough bucket (backend should preserve unknowns) */
   extended?: Record<string, unknown>;
 }
@@ -153,6 +154,106 @@ export interface BaseDocumentModel {
 export interface TextDocumentModel extends BaseDocumentModel {
   sections: Section[];
   pageSettings?: PageSettings;
+}
+
+export interface HwpFaceName {
+  name?: string;
+  baseFontName?: string;
+  substituteFontName?: string;
+  substituteFontType?: string | null;
+}
+
+export interface HwpCharShape {
+  baseSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  superScript?: boolean;
+  subScript?: boolean;
+  strikeLine?: boolean;
+  underlineSort?: string | null;
+  fontIds?: number[];
+  charSpaces?: number[] | number[];
+  ratios?: number[] | number[];
+  textColor?: string | null;
+  underlineColor?: string | null;
+  shadeColor?: string | null;
+}
+
+export interface HwpParaShape {
+  alignment?: string | null;
+  leftMargin?: number;
+  rightMargin?: number;
+  indent?: number;
+  topParaSpace?: number;
+  bottomParaSpace?: number;
+  lineSpace?: number;
+  lineSpace2?: number;
+  paraLevel?: number;
+}
+
+export interface HwpBorderFill {
+  property?: number | null;
+  leftBorder?: string | null;
+  leftBorderThickness?: string | null;
+  rightBorder?: string | null;
+  rightBorderThickness?: string | null;
+  topBorder?: string | null;
+  topBorderThickness?: string | null;
+  bottomBorder?: string | null;
+  bottomBorderThickness?: string | null;
+  fillType?: number | null;
+}
+
+export interface HwpStyle {
+  hangulName?: string;
+  englishName?: string;
+  nextStyleId?: number;
+  languageId?: number;
+  paraShapeId?: number;
+  charShapeId?: number;
+}
+
+export interface HwpNumbering {
+  startNumber?: number;
+  levels?: number;
+}
+
+export interface HwpBullet {
+  bulletChar?: string | null;
+  imageBullet?: boolean;
+  checkBulletChar?: string | null;
+}
+
+export interface HwpControlInfo {
+  type?: string | null;
+  ctrlId?: number | null;
+  isField?: boolean;
+  gsoType?: string | null;
+  gsoId?: number;
+  sectionIndex?: number;
+  paragraphIndex?: number;
+  paragraphText?: string;
+  extended?: Record<string, unknown>;
+}
+
+export interface HwpDocInfo {
+  hangulFaceNames?: HwpFaceName[];
+  englishFaceNames?: HwpFaceName[];
+  hanjaFaceNames?: HwpFaceName[];
+  japaneseFaceNames?: HwpFaceName[];
+  etcFaceNames?: HwpFaceName[];
+  symbolFaceNames?: HwpFaceName[];
+  userFaceNames?: HwpFaceName[];
+  charShapes?: HwpCharShape[];
+  paraShapes?: HwpParaShape[];
+  borderFills?: HwpBorderFill[];
+  styles?: HwpStyle[];
+  numberings?: HwpNumbering[];
+  bullets?: HwpBullet[];
+}
+
+export interface HwpDocumentModel extends TextDocumentModel {
+  docInfo?: HwpDocInfo;
 }
 
 export interface SpreadsheetDocumentModel extends BaseDocumentModel {

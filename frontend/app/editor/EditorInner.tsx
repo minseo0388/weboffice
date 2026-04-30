@@ -10,6 +10,7 @@ import ExcelRibbon from '../components/ribbon/ExcelRibbon';
 import WordRibbon from '../components/ribbon/WordRibbon';
 import HanwordRibbon from '../components/ribbon/HanwordRibbon';
 import PowerPointRibbon from '../components/ribbon/PowerPointRibbon';
+import HwpInspectorPanel from '../components/HwpInspectorPanel';
 import { ExportOption } from '../components/ribbon/ExportMenu';
 import {
   FileType,
@@ -22,6 +23,7 @@ import {
   SlideShape,
   SpreadsheetSheet,
   SpreadsheetCell,
+  HwpDocumentModel,
 } from '../types/document';
 import styles from './editor.module.css';
 
@@ -57,7 +59,6 @@ const PPT_EXPORT_OPTIONS: ExportOption[] = [
   { format: 'pptx', label: 'PowerPoint (.pptx)', icon: '📊' },
   { format: 'html', label: 'HTML 프레젠테이션',   icon: '🌐' },
 ];
-
 
 /**
  * EditorInner: The core orchestration component for the WebOffice suite.
@@ -604,6 +605,16 @@ export default function EditorInner() {
   }
 
   const currentFileType = String(docModel.fileType || docModel.format || 'unknown').toLowerCase() as FileType;
+  const isHwpFile = currentFileType === 'hwp';
+  const hwpModel = isHwpFile ? (docModel as HwpDocumentModel) : null;
+  const hwpDocInfo = hwpModel?.docInfo;
+  const hwpFaceNameCount = hwpDocInfo?.hangulFaceNames?.length ?? 0;
+  const hwpCharShapeCount = hwpDocInfo?.charShapes?.length ?? 0;
+  const hwpParaShapeCount = hwpDocInfo?.paraShapes?.length ?? 0;
+  const hwpBorderFillCount = hwpDocInfo?.borderFills?.length ?? 0;
+  const hwpStyleCount = hwpDocInfo?.styles?.length ?? 0;
+  const hwpNumberingCount = hwpDocInfo?.numberings?.length ?? 0;
+  const hwpBulletCount = hwpDocInfo?.bullets?.length ?? 0;
   const mainLayoutClass = isSpreadsheetDocument(docModel)
     ? styles.mainExcel
     : isPresentationDocument(docModel)
@@ -628,7 +639,7 @@ export default function EditorInner() {
         )}
       </header>
 
-      {/* HWP 뷰어 모드 안내 배너 */}
+      {/* Read-only / format info banner */}
       {readOnly && !readOnlyBannerDismissed && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: '10px',
@@ -639,8 +650,8 @@ export default function EditorInner() {
         }}>
           <span>🔒</span>
           <span>
-            <b>HWP 뷰어 전용</b> &mdash; HWP 바이너리 형식은 서식 수정이 지원되지 않습니다.
-            내보내기 패널에서 <b>DOCX</b> 또는 <b>PDF</b>로 저장하세요.
+            <b>편집 제한</b> &mdash; 이 문서는 현재 잠겨 있어 수정이 비활성화되었습니다.
+            내보내기 패널에서 다른 형식으로 저장할 수 있습니다.
           </span>
           <button
             onClick={() => setReadOnlyBannerDismissed(true)}
@@ -698,6 +709,12 @@ export default function EditorInner() {
       )}
 
       <main className={`${styles.mainArea} ${mainLayoutClass}`}>
+        {isHwpFile && hwpModel && (
+          <HwpInspectorPanel
+            model={hwpModel}
+            onModelChange={(updatedModel) => updateDocModel(updatedModel)}
+          />
+        )}
         {isSpreadsheetDocument(docModel) ? (
           <SpreadsheetGrid
             ref={spreadsheetRef}
