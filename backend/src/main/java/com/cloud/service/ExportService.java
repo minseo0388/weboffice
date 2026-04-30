@@ -206,7 +206,6 @@ public class ExportService {
         long heightTwips = 16838; // A4 297mm
         boolean landscape = false;
         long marginTop = 1440, marginBottom = 1440, marginLeft = 1701, marginRight = 1701;
-        String headerText = null, footerText = null;
 
         if (pageSets != null) {
             String sizeName = String.valueOf(pageSets.getOrDefault("size", "A4"));
@@ -236,8 +235,6 @@ public class ExportService {
                 if (margins.get("left")   instanceof Number l) marginLeft   = Math.round(l.doubleValue() * 56.692);
                 if (margins.get("right")  instanceof Number r) marginRight  = Math.round(r.doubleValue() * 56.692);
             }
-            headerText = pageSets.get("headerText") instanceof String s && !s.isBlank() ? s : null;
-            footerText = pageSets.get("footerText") instanceof String s && !s.isBlank() ? s : null;
         }
 
         // Apply page size / orientation
@@ -274,8 +271,7 @@ public class ExportService {
         titleRun.setFontSize(18);
         titleRun.addBreak();
 
-        // ── Numbering (for ordered/unordered lists) ──────────────────────
-        XWPFNumbering numbering = wordDoc.createNumbering();
+        // (Numbering is not fully implemented in this version)
 
         // ── Body paragraphs ──────────────────────────────────────────
         List<Map<String, Object>> sections =

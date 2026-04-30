@@ -4,7 +4,6 @@ import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.usermodel.Range;
 import org.apache.poi.hwpf.usermodel.Table;
 import org.apache.poi.hwpf.usermodel.TableIterator;
-import org.apache.poi.util.Units;
 import org.apache.poi.xwpf.usermodel.*;
 import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
@@ -38,24 +37,28 @@ public class WordService {
     }
 
     private Map<String, Object> parseDocxDocument(XWPFDocument doc, String title, String format) {
-        List<Map<String, Object>> paragraphs = new ArrayList<>();
-        for (int i = 0; i < doc.getParagraphs().size(); i++) {
-            paragraphs.add(extractParagraph(doc.getParagraphs().get(i), i));
-        }
+        List<Map<String, Object>> bodyElements = new ArrayList<>();
+        int pIdx = 0, tIdx = 0;
 
-        List<Map<String, Object>> tables = new ArrayList<>();
-        for (int t = 0; t < doc.getTables().size(); t++) {
-            tables.add(extractTable(doc.getTables().get(t), t));
+        for (IBodyElement elem : doc.getBodyElements()) {
+            if (elem instanceof XWPFParagraph p) {
+                bodyElements.add(extractParagraph(p, pIdx++));
+            } else if (elem instanceof XWPFTable t) {
+                // To keep it consistent with HWP, we can wrap Table as a Control in a virtual paragraph
+                // or just add it as a separate element. Let's add it as a special paragraph with controls.
+                Map<String, Object> virtualPara = new LinkedHashMap<>();
+                virtualPara.put("text", "");
+                virtualPara.put("controls", List.of(extractTable(t, tIdx++)));
+                bodyElements.add(virtualPara);
+            }
         }
 
         List<Map<String, Object>> images = extractImages(doc);
-
         Map<String, Object> pageSetup = extractPageSetup(doc);
         Map<String, Object> headerFooter = extractHeaderFooter(doc);
 
         Map<String, Object> section = new LinkedHashMap<>();
-        section.put("paragraphs", paragraphs);
-        section.put("tables",     tables);
+        section.put("paragraphs", bodyElements);
         section.put("images",     images);
         section.put("pageSetup",  pageSetup);
         section.put("header",     headerFooter.get("header"));
@@ -160,15 +163,11 @@ public class WordService {
             List<Map<String, Object>> cells = new ArrayList<>();
             for (int c = 0; c < row.getTableCells().size(); c++) {
                 XWPFTableCell cell = row.getTableCells().get(c);
-                // 셀 내 paragraph 전체 텍스트 + 서식
                 List<Map<String, Object>> cellParas = new ArrayList<>();
                 for (int pi = 0; pi < cell.getParagraphs().size(); pi++) {
                     cellParas.add(extractParagraph(cell.getParagraphs().get(pi), pi));
                 }
                 Map<String, Object> cm = new LinkedHashMap<>();
-                cm.put("row",       r);
-                cm.put("col",       c);
-                cm.put("text",      cell.getText());
                 cm.put("paragraphs", cellParas);
                 cm.put("bgColor",   cell.getColor());
                 cm.put("width",     cell.getWidth());
@@ -176,7 +175,7 @@ public class WordService {
             }
             rows.add(Map.of("cells", cells));
         }
-        return Map.of("tableIndex", idx, "rows", rows);
+        return Map.of("type", "TABLE", "table", Map.of("rows", rows, "tableIndex", idx));
     }
 
     // ── Images ────────────────────────────────────────────────────────────
@@ -308,23 +307,26 @@ public class WordService {
                 applyHeaderFooter(doc, hdr, ftr);
             }
 
-            // ── 단락 ────────────────────────────────────────────────────
+            // ── 단락 및 테이블 ───────────────────────────────────────────
             List<Map<String, Object>> paras = (List<Map<String, Object>>) sec.get("paragraphs");
             if (paras != null) {
-                for (Map<String, Object> pd : paras) {
-                    int idx = pd.get("paragraphIndex") instanceof Number n ? n.intValue() : -1;
-                    if (idx < 0 || idx >= doc.getParagraphs().size()) continue;
-                    applyParagraph(doc.getParagraphs().get(idx), pd, doc);
-                }
-            }
+                int pCount = doc.getParagraphs().size();
+                int tCount = doc.getTables().size();
 
-            // ── 테이블 ──────────────────────────────────────────────────
-            List<Map<String, Object>> tables = (List<Map<String, Object>>) sec.get("tables");
-            if (tables != null) {
-                for (Map<String, Object> td : tables) {
-                    int ti = td.get("tableIndex") instanceof Number n ? n.intValue() : -1;
-                    if (ti < 0 || ti >= doc.getTables().size()) continue;
-                    applyTable(doc.getTables().get(ti), td);
+                for (Map<String, Object> pd : paras) {
+                    List<Map<String, Object>> controls = (List<Map<String, Object>>) pd.get("controls");
+                    if (controls != null && !controls.isEmpty()) {
+                        for (Map<String, Object> ctrl : controls) {
+                            if ("TABLE".equals(ctrl.get("type"))) {
+                                Map<String, Object> tblData = (Map<String, Object>) ctrl.get("table");
+                                int ti = tblData.get("tableIndex") instanceof Number n ? n.intValue() : -1;
+                                if (ti >= 0 && ti < tCount) applyTable(doc.getTables().get(ti), tblData);
+                            }
+                        }
+                    } else {
+                        int idx = pd.get("paragraphIndex") instanceof Number n ? n.intValue() : -1;
+                        if (idx >= 0 && idx < pCount) applyParagraph(doc.getParagraphs().get(idx), pd, doc);
+                    }
                 }
             }
 
@@ -351,8 +353,7 @@ public class WordService {
             // 자간 (twentieths of pt)
             if (d.get("letterSpacing") instanceof Number ls && ls.doubleValue() != 0) {
                 try {
-                    CTRPr rpr = run.getCTR().isSetRPr() ? run.getCTR().getRPr() : run.getCTR().addNewRPr();
-                    // 자간은 호환성 이슈로 저장하지 않는다.
+                    // rpr is not used anymore
                 } catch (Exception ignored) {}
             }
         }

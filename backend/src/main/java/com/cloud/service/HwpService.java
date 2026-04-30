@@ -2,8 +2,14 @@ package com.cloud.service;
 
 import kr.dogfoot.hwplib.object.bodytext.control.Control;
 import kr.dogfoot.hwplib.object.bodytext.control.ControlType;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlTable;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlPicture;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlSectionDefine;
+import kr.dogfoot.hwplib.object.bodytext.control.table.Row;
+import kr.dogfoot.hwplib.object.bodytext.control.table.Cell;
 import kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControl;
 import kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControlType;
+import kr.dogfoot.hwplib.object.bodytext.control.sectiondefine.PageDef;
 import kr.dogfoot.hwplib.object.HWPFile;
 import kr.dogfoot.hwplib.object.bodytext.Section;
 import kr.dogfoot.hwplib.object.bodytext.paragraph.Paragraph;
@@ -81,12 +87,25 @@ public class HwpService {
 
         for (Section section : sectionList) {
             List<Map<String, Object>> paragraphs = new ArrayList<>();
+            PageDef foundPageDef = null;
             for (int pi = 0; pi < section.getParagraphCount(); pi++) {
                 Paragraph para = section.getParagraph(pi);
-                paragraphs.add(extractPara(para, csLst, psLst, sections.size(), pi));
+                paragraphs.add(extractPara(hwp, para, csLst, psLst, sections.size(), pi));
+                
+                // Search for SectionDefine control (Page Setup)
+                if (foundPageDef == null && para.getControlList() != null) {
+                    for (Control ctrl : para.getControlList()) {
+                        if (ctrl instanceof ControlSectionDefine csd) {
+                            foundPageDef = csd.getPageDef();
+                        }
+                    }
+                }
             }
             Map<String, Object> secMap = new java.util.LinkedHashMap<>();
             secMap.put("paragraphs", paragraphs);
+            if (foundPageDef != null) {
+                secMap.put("pageSetup", extractPageDef(foundPageDef));
+            }
             sections.add(secMap);
         }
 
@@ -233,7 +252,23 @@ public class HwpService {
         return String.format("#%02X%02X%02X", color.getR(), color.getG(), color.getB());
     }
 
-    private Map<String, Object> extractPara(Paragraph para,
+    private Map<String, Object> extractPageDef(PageDef pageDef) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (pageDef == null) return m;
+        m.put("paperWidth", pageDef.getPaperWidth());
+        m.put("paperHeight", pageDef.getPaperHeight());
+        m.put("leftMargin", pageDef.getLeftMargin());
+        m.put("rightMargin", pageDef.getRightMargin());
+        m.put("topMargin", pageDef.getTopMargin());
+        m.put("bottomMargin", pageDef.getBottomMargin());
+        m.put("headerMargin", pageDef.getHeaderMargin());
+        m.put("footerMargin", pageDef.getFooterMargin());
+        m.put("gutterMargin", pageDef.getGutterMargin());
+        return m;
+    }
+
+    private Map<String, Object> extractPara(HWPFile hwp,
+                                             Paragraph para,
                                              List<CharShape> csList,
                                              List<ParaShape> psList,
                                              int sectionIndex,
@@ -287,8 +322,10 @@ public class HwpService {
         // ── 컨트롤 메타데이터 ───────────────────────────────────────────
         List<Map<String, Object>> controls = new ArrayList<>();
         try {
-            for (Control control : para.getControlList()) {
-                controls.add(extractControl(control, sectionIndex, paragraphIndex, sb.toString()));
+            if (para.getControlList() != null) {
+                for (Control control : para.getControlList()) {
+                    controls.add(extractControl(hwp, control, sectionIndex, paragraphIndex, sb.toString()));
+                }
             }
         } catch (Exception ignored) {}
 
@@ -338,7 +375,7 @@ public class HwpService {
         return m;
     }
 
-    private Map<String, Object> extractControl(Control control, int sectionIndex, int paragraphIndex, String paragraphText) {
+    private Map<String, Object> extractControl(HWPFile hwp, Control control, int sectionIndex, int paragraphIndex, String paragraphText) {
         Map<String, Object> item = new LinkedHashMap<>();
         ControlType type = control.getType();
         item.put("type", type != null ? type.name() : null);
@@ -347,12 +384,55 @@ public class HwpService {
         item.put("sectionIndex", sectionIndex);
         item.put("paragraphIndex", paragraphIndex);
         item.put("paragraphText", paragraphText);
-        if (control instanceof GsoControl gso) {
+
+        if (control instanceof ControlTable table) {
+            item.put("table", extractTable(hwp, table));
+        } else if (control instanceof ControlPicture pic) {
+            item.put("picture", extractPicture(hwp, pic));
+        } else if (control instanceof GsoControl gso) {
             GsoControlType gsoType = gso.getGsoType();
             item.put("gsoType", gsoType != null ? gsoType.name() : null);
             item.put("gsoId", gso.getGsoId());
         }
         return item;
+    }
+
+    private Map<String, Object> extractTable(HWPFile hwp, ControlTable table) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("rowCount", table.getRowList().size());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Row row : table.getRowList()) {
+            Map<String, Object> rowMap = new LinkedHashMap<>();
+            List<Map<String, Object>> cells = new ArrayList<>();
+            for (Cell cell : row.getCellList()) {
+                Map<String, Object> cellMap = new LinkedHashMap<>();
+                cellMap.put("width", cell.getListHeader().getWidth());
+                cellMap.put("height", cell.getListHeader().getHeight());
+                cellMap.put("colSpan", cell.getListHeader().getColSpan());
+                cellMap.put("rowSpan", cell.getListHeader().getRowSpan());
+                // Cell paragraphs
+                List<Map<String, Object>> cellParas = new ArrayList<>();
+                for (Paragraph p : cell.getParagraphList()) {
+                    cellParas.add(extractPara(hwp, p, hwp.getDocInfo().getCharShapeList(), hwp.getDocInfo().getParaShapeList(), -1, -1));
+                }
+                cellMap.put("paragraphs", cellParas);
+                cells.add(cellMap);
+            }
+            rowMap.put("cells", cells);
+            rows.add(rowMap);
+        }
+        m.put("rows", rows);
+        return m;
+    }
+
+    private Map<String, Object> extractPicture(HWPFile hwp, ControlPicture pic) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        try {
+            m.put("binId", pic.getShapeComponentPicture().getPictureInfo().getBinItemID());
+            m.put("width", pic.getHeader().getWidth());
+            m.put("height", pic.getHeader().getHeight());
+        } catch (Exception ignored) {}
+        return m;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -381,6 +461,21 @@ public class HwpService {
                     Map<String, Object> pData = parasData.get(pi);
                     applyParaText(hwp, para, pData);
                     applyParaFormatting(hwp, para, pData, si, pi);
+                    applyParaControls(hwp, para, pData, si, pi);
+                }
+                // Apply PageSetup
+                Map<String, Object> psData = (Map<String, Object>) sections.get(si).get("pageSetup");
+                if (psData != null) {
+                    for (int pi = 0; pi < sec.getParagraphCount(); pi++) {
+                        Paragraph p = sec.getParagraph(pi);
+                        if (p.getControlList() != null) {
+                            for (Control ctrl : p.getControlList()) {
+                                if (ctrl instanceof ControlSectionDefine csd) {
+                                    applyPageDef(csd.getPageDef(), psData);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             return toBytes(hwp);
@@ -559,6 +654,61 @@ public class HwpService {
     }
 
     // ── HWPFile → byte[] ──────────────────────────────────────────────────
+
+    private void applyPageDef(PageDef pageDef, Map<String, Object> d) {
+        if (pageDef == null) return;
+        if (d.get("paperWidth") instanceof Number n) pageDef.setPaperWidth(n.longValue());
+        if (d.get("paperHeight") instanceof Number n) pageDef.setPaperHeight(n.longValue());
+        if (d.get("leftMargin") instanceof Number n) pageDef.setLeftMargin(n.longValue());
+        if (d.get("rightMargin") instanceof Number n) pageDef.setRightMargin(n.longValue());
+        if (d.get("topMargin") instanceof Number n) pageDef.setTopMargin(n.longValue());
+        if (d.get("bottomMargin") instanceof Number n) pageDef.setBottomMargin(n.longValue());
+        if (d.get("headerMargin") instanceof Number n) pageDef.setHeaderMargin(n.longValue());
+        if (d.get("footerMargin") instanceof Number n) pageDef.setFooterMargin(n.longValue());
+        // if (d.get("gutterMargin") instanceof Number n) pageDef.setGutterMargin(n.longValue());
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private void applyParaControls(HWPFile hwp, Paragraph para, Map<String, Object> d, int si, int pi) {
+        if (para.getControlList() == null) return;
+        List<Map<String, Object>> controlsData = (List<Map<String, Object>>) d.get("controls");
+        if (controlsData == null) return;
+
+        for (int i = 0; i < para.getControlList().size() && i < controlsData.size(); i++) {
+            kr.dogfoot.hwplib.object.bodytext.control.Control ctrl = para.getControlList().get(i);
+            Map<String, Object> cData = controlsData.get(i);
+            if (ctrl instanceof ControlTable table && cData.get("table") instanceof Map tableData) {
+                applyTableUpdate(hwp, table, (Map<String, Object>) tableData);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyTableUpdate(HWPFile hwp, ControlTable table, Map<String, Object> d) {
+        List<Map<String, Object>> rowsData = (List<Map<String, Object>>) d.get("rows");
+        if (rowsData == null) return;
+        for (int ri = 0; ri < table.getRowList().size() && ri < rowsData.size(); ri++) {
+            Row row = table.getRowList().get(ri);
+            Map<String, Object> rData = rowsData.get(ri);
+            List<Map<String, Object>> cellsData = (List<Map<String, Object>>) rData.get("cells");
+            if (cellsData == null) continue;
+            for (int ci = 0; ci < row.getCellList().size() && ci < cellsData.size(); ci++) {
+                Cell cell = row.getCellList().get(ci);
+                Map<String, Object> cData = cellsData.get(ci);
+                List<Map<String, Object>> parasData = (List<Map<String, Object>>) cData.get("paragraphs");
+                if (parasData == null) continue;
+                for (int pi = 0; pi < cell.getParagraphList().getParagraphCount() && pi < parasData.size(); pi++) {
+                    Paragraph cp = cell.getParagraphList().getParagraph(pi);
+                    Map<String, Object> cpData = parasData.get(pi);
+                    try {
+                        applyParaText(hwp, cp, cpData);
+                        applyParaFormatting(hwp, cp, cpData, -1, -1);
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+    }
 
     private byte[] toBytes(HWPFile hwp) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

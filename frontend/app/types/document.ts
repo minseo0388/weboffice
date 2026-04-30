@@ -38,6 +38,7 @@ export interface Paragraph {
 export interface Section {
   paragraphs: Paragraph[];
   tables?: WordTable[];
+  pageSetup?: Record<string, number>;
 }
 
 export interface WordTableCell {
@@ -233,6 +234,24 @@ export interface HwpControlInfo {
   sectionIndex?: number;
   paragraphIndex?: number;
   paragraphText?: string;
+  table?: {
+    rowCount: number;
+    rows: {
+      cells: {
+        width: number;
+        height: number;
+        colSpan?: number;
+        rowSpan?: number;
+        paragraphs: Paragraph[];
+      }[];
+    }[];
+  };
+  picture?: {
+    binId: number;
+    width: number;
+    height: number;
+    base64?: string;
+  };
   extended?: Record<string, unknown>;
 }
 

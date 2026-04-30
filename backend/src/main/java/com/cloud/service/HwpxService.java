@@ -12,6 +12,13 @@ import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.Para;
 import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.Run;
 import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.RunItem;
 import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.T;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.object.Table;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.object.Picture;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.object.table.Tr;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.object.table.Tc;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.secpr.SecPr;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.secpr.pagepr.PagePr;
+import kr.dogfoot.hwpxlib.object.content.section_xml.paragraph.secpr.pagepr.PageMargin;
 import kr.dogfoot.hwpxlib.reader.HWPXReader;
 import kr.dogfoot.hwpxlib.tool.blankfilemaker.BlankFileMaker;
 import kr.dogfoot.hwpxlib.writer.HWPXWriter;
@@ -73,6 +80,9 @@ public class HwpxService {
             }
             Map<String, Object> secMap = new LinkedHashMap<>();
             secMap.put("paragraphs", paragraphs);
+            if (sec.countOfPara() > 0 && sec.getPara(0).countOfRun() > 0 && sec.getPara(0).getRun(0).secPr() != null) {
+                secMap.put("pageSetup", extractPagePr(sec.getPara(0).getRun(0).secPr().pagePr()));
+            }
             sections.add(secMap);
         }
 
@@ -85,14 +95,39 @@ public class HwpxService {
         return model;
     }
 
+    private Map<String, Object> extractPagePr(PagePr pagePr) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (pagePr == null) return m;
+        m.put("paperWidth", pagePr.width());
+        m.put("paperHeight", pagePr.height());
+        PageMargin margin = pagePr.margin();
+        if (margin != null) {
+            m.put("leftMargin", margin.left());
+            m.put("rightMargin", margin.right());
+            m.put("topMargin", margin.top());
+            m.put("bottomMargin", margin.bottom());
+            m.put("headerMargin", margin.header());
+            m.put("footerMargin", margin.footer());
+            m.put("gutterMargin", margin.gutter());
+        }
+        return m;
+    }
+
     private Map<String, Object> extractPara(HWPXFile hwpx, Para para) {
-        // Collect text
+        // Collect text and controls
+        List<Map<String, Object>> controls = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
         for (int ri = 0; ri < para.countOfRun(); ri++) {
             Run run = para.getRun(ri);
             for (int ti = 0; ti < run.countOfRunItem(); ti++) {
                 RunItem item = run.getRunItem(ti);
-                if (item instanceof T t && t.isOnlyText()) sb.append(t.onlyText());
+                if (item instanceof T t && t.isOnlyText()) {
+                    sb.append(t.onlyText());
+                } else if (item instanceof Table table) {
+                    controls.add(extractTable(hwpx, table));
+                } else if (item instanceof Picture pic) {
+                    controls.add(extractPicture(hwpx, pic));
+                }
             }
         }
 
@@ -181,6 +216,46 @@ public class HwpxService {
         m.put("lineSpacing",            lineSpace);
         m.put("paragraphSpacingBefore", spaceBefore);
         m.put("paragraphSpacingAfter",  spaceAfter);
+        if (!controls.isEmpty()) {
+            m.put("controls", controls);
+        }
+        return m;
+    }
+
+    private Map<String, Object> extractTable(HWPXFile hwpx, Table table) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("type", "TABLE");
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int ri = 0; ri < table.countOfTr(); ri++) {
+            Tr tr = table.getTr(ri);
+            Map<String, Object> rowMap = new LinkedHashMap<>();
+            List<Map<String, Object>> cells = new ArrayList<>();
+            for (int ci = 0; ci < tr.countOfTc(); ci++) {
+                Tc tc = tr.getTc(ci);
+                Map<String, Object> cellMap = new LinkedHashMap<>();
+                List<Map<String, Object>> cellParas = new ArrayList<>();
+                for (int pi = 0; pi < tc.subList().countOfPara(); pi++) {
+                    cellParas.add(extractPara(hwpx, tc.subList().getPara(pi)));
+                }
+                cellMap.put("paragraphs", cellParas);
+                cells.add(cellMap);
+            }
+            rowMap.put("cells", cells);
+            rows.add(rowMap);
+        }
+        m.put("table", Map.of("rows", rows));
+        return m;
+    }
+
+    private Map<String, Object> extractPicture(HWPXFile hwpx, Picture pic) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("type", "PICTURE");
+        try {
+            m.put("picture", Map.of(
+                "width", pic.sz().width(),
+                "height", pic.sz().height()
+            ));
+        } catch (Exception ignored) {}
         return m;
     }
 
@@ -305,7 +380,9 @@ public class HwpxService {
                         }
                     }
                     String newText = pData.get("text") instanceof String s ? s : "";
-                    targetT.addText(newText);
+                    if (targetT != null) {
+                        targetT.addText(newText);
+                    }
 
                     // Character properties: apply to the target run only (preserve other runs' styling)
                     String cpId = "cp_s" + si + "_p" + pi;

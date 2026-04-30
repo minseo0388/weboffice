@@ -45,6 +45,7 @@ public class ExcelService {
             model.put("fileType",   format);
             model.put("sheetCount", wb.getNumberOfSheets());
             model.put("sheets",     sheets);
+            model.put("images",     extractImages(wb));
             return model;
         }
     }
@@ -234,6 +235,17 @@ public class ExcelService {
             m.put("comment", cell.getCellComment().getString().getString());
         }
         return m;
+    }
+
+    private List<Map<String, Object>> extractImages(Workbook wb) {
+        List<Map<String, Object>> images = new ArrayList<>();
+        for (PictureData pic : wb.getAllPictures()) {
+            Map<String, Object> im = new LinkedHashMap<>();
+            im.put("contentType", pic.getMimeType());
+            im.put("base64",      java.util.Base64.getEncoder().encodeToString(pic.getData()));
+            images.add(im);
+        }
+        return images;
     }
 
     private int getMaxCol(Sheet sheet) {

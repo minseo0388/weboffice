@@ -509,26 +509,62 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                         {para.listType === 'bullet' && <span style={{ marginRight: '8px' }}>•</span>}
                         {para.listType === 'number' && <span style={{ marginRight: '8px' }}>{paraIdx + 1}.</span>}
                         <div style={{ flex: 1 }}>
-                        {isEditing ? (
-                          <input
-                            ref={textInputRef}
-                            type="text"
-                            value={editState.text}
-                            onChange={handleTextChange}
-                            onBlur={handleSaveText}
-                            onKeyDown={handleKeyDown}
-                            className={styles.input}
-                            style={{
-                              fontFamily: para.fontName || fontName || 'NanumGothic',
-                              fontSize: `${para.fontSize || fontSize || 14}pt`,
-                              color: para.textColor || '#111827',
-                            }}
-                          />
-                        ) : (
-                          <span onClick={() => handleParagraphClick(sectionIdx, paraIdx, para)}>
-                            {para.text || '(empty)'}
-                          </span>
-                        )}
+                          {isEditing ? (
+                            <input
+                              ref={textInputRef}
+                              type="text"
+                              value={editState.text}
+                              onChange={handleTextChange}
+                              onBlur={handleSaveText}
+                              onKeyDown={handleKeyDown}
+                              className={styles.input}
+                              style={{
+                                fontFamily: para.fontName || fontName || 'NanumGothic',
+                                fontSize: `${para.fontSize || fontSize || 14}pt`,
+                                color: para.textColor || '#111827',
+                              }}
+                            />
+                          ) : (
+                            <span onClick={() => handleParagraphClick(sectionIdx, paraIdx, para)}>
+                              {para.text || (para.controls?.length ? '' : '(empty)')}
+                            </span>
+                          )}
+
+                          {/* ─ Controls (Tables/Pictures) ─ */}
+                          {para.controls?.map((ctrl, ci) => (
+                            <div key={ci} className={styles.controlItem}>
+                              {ctrl.type === 'TABLE' && ctrl.table && (
+                                <table className={styles.embeddedTable}>
+                                  <tbody>
+                                    {ctrl.table.rows.map((row, ri) => (
+                                      <tr key={ri}>
+                                        {row.cells.map((cell, cci) => (
+                                          <td key={cci} colSpan={cell.colSpan} rowSpan={cell.rowSpan}>
+                                            {cell.paragraphs.map((cp, cpi) => (
+                                              <div key={cpi} style={{ fontSize: `${cp.fontSize || 10}pt` }}>
+                                                {cp.text}
+                                              </div>
+                                            ))}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              {ctrl.type === 'PICTURE' && ctrl.picture && (
+                                <div className={styles.embeddedPicture}>
+                                  {ctrl.picture.base64 ? (
+                                    <img src={`data:image/png;base64,${ctrl.picture.base64}`} alt="embedded" />
+                                  ) : (
+                                    <div className={styles.imagePlaceholder}>
+                                      🖼️ Image ({ctrl.picture.width} x {ctrl.picture.height})
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
