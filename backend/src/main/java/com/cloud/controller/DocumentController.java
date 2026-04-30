@@ -7,6 +7,7 @@ import com.cloud.service.ExportService;
 import com.cloud.service.FontMappingService;
 import com.cloud.service.HwpService;
 import com.cloud.service.HwpxService;
+import com.cloud.service.LibraryApiCatalogService;
 import com.cloud.service.StorageService;
 import kr.dogfoot.hwplib.object.HWPFile;
 import kr.dogfoot.hwplib.object.bodytext.Section;
@@ -62,6 +63,7 @@ public class DocumentController {
     private final ExportService exportService;
     private final HwpService hwpService;
     private final HwpxService hwpxService;
+    private final LibraryApiCatalogService libraryApiCatalogService;
 
     @Autowired
     public DocumentController(
@@ -71,7 +73,8 @@ public class DocumentController {
             DocumentSaveService documentSaveService,
             ExportService exportService,
             HwpService hwpService,
-            HwpxService hwpxService
+                HwpxService hwpxService,
+                LibraryApiCatalogService libraryApiCatalogService
     ) {
         this.fontMappingService = fontMappingService;
         this.documentServiceFactory = documentServiceFactory;
@@ -80,6 +83,7 @@ public class DocumentController {
         this.exportService = exportService;
         this.hwpService  = hwpService;
         this.hwpxService = hwpxService;
+        this.libraryApiCatalogService = libraryApiCatalogService;
     }
 
     /**
@@ -354,6 +358,42 @@ public class DocumentController {
     @GetMapping("/fontmap")
     public ResponseEntity<Map<String, String>> getFontMap() {
         return ResponseEntity.ok(fontMappingService.getFullMap());
+    }
+
+    /**
+     * GET /api/documents/library-apis
+     * Returns a class/method catalog extracted from loaded hwplib, hwpxlib, and Apache POI jars.
+     */
+    @GetMapping("/library-apis")
+    public ResponseEntity<Map<String, Object>> getLibraryApis(
+            @RequestParam(value = "library", required = false) String library,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "includeMethods", defaultValue = "false") boolean includeMethods,
+            @RequestParam(value = "maxMatches", defaultValue = "120") int maxMatches
+    ) {
+        try {
+            return ResponseEntity.ok(libraryApiCatalogService.getCatalog(library, keyword, includeMethods, maxMatches));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/documents/library-apis/refresh
+     * Rebuilds classpath catalog and returns latest result.
+     */
+    @PostMapping("/library-apis/refresh")
+    public ResponseEntity<Map<String, Object>> refreshLibraryApis(
+            @RequestParam(value = "library", required = false) String library,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "includeMethods", defaultValue = "false") boolean includeMethods,
+            @RequestParam(value = "maxMatches", defaultValue = "120") int maxMatches
+    ) {
+        try {
+            return ResponseEntity.ok(libraryApiCatalogService.refreshCatalog(library, keyword, includeMethods, maxMatches));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
 }

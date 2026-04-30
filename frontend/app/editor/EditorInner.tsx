@@ -11,6 +11,7 @@ import WordRibbon from '../components/ribbon/WordRibbon';
 import HanwordRibbon from '../components/ribbon/HanwordRibbon';
 import PowerPointRibbon from '../components/ribbon/PowerPointRibbon';
 import HwpInspectorPanel from '../components/HwpInspectorPanel';
+import LibraryApiPanel from '../components/LibraryApiPanel';
 import { ExportOption } from '../components/ribbon/ExportMenu';
 import {
   FileType,
@@ -763,6 +764,8 @@ export default function EditorInner() {
           exportOptions={TEXT_EXPORT_OPTIONS}
         />
       )}
+
+      <LibraryApiPanel token={user?.token} />
 
       <main className={`${styles.mainArea} ${mainLayoutClass}`}>
         {isHwpFile && hwpModel && (
