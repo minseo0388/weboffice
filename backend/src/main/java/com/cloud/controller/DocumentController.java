@@ -345,74 +345,7 @@ public class DocumentController {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // HWP binary parsing (hwplib)
-    // ─────────────────────────────────────────────────────────────────
-    private ResponseEntity<Map<String, Object>> parseHwp(MultipartFile file) throws Exception {
-        java.nio.file.Path tempPath = java.nio.file.Files.createTempFile("hc_hwp_", ".hwp");
-        File temp = tempPath.toFile();
-        try {
-            file.transferTo(tempPath);
-            HWPFile hwpFile = HWPReader.fromFile(temp.getAbsolutePath());
-            if (hwpFile == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "손상된 HWP 파일입니다."));
-            }
-
-            List<Map<String, Object>> sections = new ArrayList<>();
-
-            for (int si = 0; si < hwpFile.getBodyText().getSectionList().size(); si++) {
-                Section section = hwpFile.getBodyText().getSectionList().get(si);
-                List<Map<String, Object>> paragraphs = new ArrayList<>();
-
-                for (int pi = 0; pi < section.getParagraphCount(); pi++) {
-                    Paragraph para = section.getParagraph(pi);
-                    Map<String, Object> paraMap = extractParagraph(hwpFile, para);
-                    paragraphs.add(paraMap);
-                }
-
-                sections.add(Map.of("paragraphs", paragraphs));
-            }
-
-            Map<String, Object> model = new LinkedHashMap<>();
-            model.put("title", file.getOriginalFilename());
-            model.put("format", "hwp");
-            model.put("fileType", "hwp");
-            model.put("sectionCount", sections.size());
-            model.put("sections", sections);
-            model.put("fontMap", fontMappingService.getFullMap());
-            return ResponseEntity.ok(model);
-
-        } finally {
-            temp.delete();
-        }
-    }
-
-    /**
-     * Extracts a single paragraph into a JSON-safe map.
-     * Currently extracts plain text. Styling requires deep mapping of CharShape list.
-     */
-    private Map<String, Object> extractParagraph(HWPFile hwpFile, Paragraph para) {
-        StringBuilder text = new StringBuilder();
-        if (para.getText() != null) {
-            for (HWPChar hwpChar : para.getText().getCharList()) {
-                if (hwpChar instanceof HWPCharNormal) {
-                    text.append((char) ((HWPCharNormal) hwpChar).getCode());
-                }
-            }
-        }
-
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("text",      text.toString());
-        map.put("fontName",  "NanumGothic");
-        map.put("fontSize",  14);
-        map.put("bold",      false);
-        map.put("italic",    false);
-        map.put("underline", false);
-        map.put("align",     "left");
-        return map;
-    }
-
-
+    // Legacy methods removed
 
     /**
      * GET /api/documents/fontmap

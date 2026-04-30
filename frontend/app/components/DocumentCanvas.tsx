@@ -466,6 +466,11 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
             ) : (
               sections.map((section, sectionIdx) => (
                 <div key={sectionIdx} className={styles.section}>
+                  {section.pageSetup && (
+                    <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px dashed #e2e8f0' }}>
+                      [구역 속성: {Object.entries(section.pageSetup).map(([k,v]) => `${k}=${v}`).join(', ')}]
+                    </div>
+                  )}
                   {section.paragraphs.map((para, paraIdx) => {
                     const isEditing =
                       editState?.sectionIdx === sectionIdx && editState?.paraIdx === paraIdx;
@@ -530,7 +535,7 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                             </span>
                           )}
 
-                          {/* ─ Controls (Tables/Pictures) ─ */}
+                          {/* ─ Controls (Tables/Pictures/Embedded Paragraphs) ─ */}
                           {para.controls?.map((ctrl, ci) => (
                             <div key={ci} className={styles.controlItem}>
                               {ctrl.type === 'TABLE' && ctrl.table && (
@@ -561,6 +566,19 @@ const DocumentCanvas = forwardRef<DocumentCanvasHandle, DocumentCanvasProps>(fun
                                       🖼️ Image ({ctrl.picture.width} x {ctrl.picture.height})
                                     </div>
                                   )}
+                                </div>
+                              )}
+                              {/* Render embedded paragraphs for Header, Footer, GSO etc. */}
+                              {ctrl.paragraphs && ctrl.paragraphs.length > 0 && (
+                                <div style={{ border: '1px dashed #cbd5e1', padding: '8px', marginTop: '4px', backgroundColor: '#f8fafc', borderRadius: '4px' }}>
+                                  <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px', fontWeight: 'bold' }}>
+                                    {ctrl.type || ctrl.gsoType || 'Embedded Object'}
+                                  </div>
+                                  {ctrl.paragraphs.map((cp, cpi) => (
+                                    <div key={cpi} style={{ fontSize: `${cp.fontSize || 10}pt`, color: cp.textColor || '#334155' }}>
+                                      {cp.text || (cp.controls?.length ? '' : '(empty)')}
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>

@@ -9,6 +9,24 @@ import kr.dogfoot.hwplib.object.bodytext.control.table.Row;
 import kr.dogfoot.hwplib.object.bodytext.control.table.Cell;
 import kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControl;
 import kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControlType;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlLine;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlRectangle;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlEllipse;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlArc;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlPolygon;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlCurve;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlOLE;
+import kr.dogfoot.hwplib.object.bodytext.control.gso.ControlContainer;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlHeader;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlFooter;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlFootnote;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlEndnote;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlPageNumberPosition;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlEquation;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlField;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlBookmark;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlColumnDefine;
+import kr.dogfoot.hwplib.object.bodytext.control.ControlHiddenComment;
 import kr.dogfoot.hwplib.object.bodytext.control.sectiondefine.PageDef;
 import kr.dogfoot.hwplib.object.HWPFile;
 import kr.dogfoot.hwplib.object.bodytext.Section;
@@ -389,12 +407,42 @@ public class HwpService {
             item.put("table", extractTable(hwp, table));
         } else if (control instanceof ControlPicture pic) {
             item.put("picture", extractPicture(hwp, pic));
+        } else if (control instanceof ControlHeader header) {
+            item.put("paragraphs", extractParagraphList(hwp, header.getParagraphList()));
+        } else if (control instanceof ControlFooter footer) {
+            item.put("paragraphs", extractParagraphList(hwp, footer.getParagraphList()));
+        } else if (control instanceof ControlFootnote footnote) {
+            item.put("paragraphs", extractParagraphList(hwp, footnote.getParagraphList()));
+        } else if (control instanceof ControlEndnote endnote) {
+            item.put("paragraphs", extractParagraphList(hwp, endnote.getParagraphList()));
+        } else if (control instanceof ControlHiddenComment hidden) {
+            item.put("paragraphs", extractParagraphList(hwp, hidden.getParagraphList()));
         } else if (control instanceof GsoControl gso) {
             GsoControlType gsoType = gso.getGsoType();
             item.put("gsoType", gsoType != null ? gsoType.name() : null);
             item.put("gsoId", gso.getGsoId());
+            
+            kr.dogfoot.hwplib.object.bodytext.paragraph.ParagraphList pList = null;
+            if (gso instanceof ControlRectangle rect && rect.getTextBox() != null) pList = rect.getTextBox().getParagraphList();
+            else if (gso instanceof ControlEllipse ellipse && ellipse.getTextBox() != null) pList = ellipse.getTextBox().getParagraphList();
+            else if (gso instanceof ControlArc arc && arc.getTextBox() != null) pList = arc.getTextBox().getParagraphList();
+            else if (gso instanceof ControlPolygon poly && poly.getTextBox() != null) pList = poly.getTextBox().getParagraphList();
+            else if (gso instanceof ControlCurve curve && curve.getTextBox() != null) pList = curve.getTextBox().getParagraphList();
+            
+            if (pList != null) {
+                item.put("paragraphs", extractParagraphList(hwp, pList));
+            }
         }
         return item;
+    }
+
+    private List<Map<String, Object>> extractParagraphList(HWPFile hwp, kr.dogfoot.hwplib.object.bodytext.paragraph.ParagraphList pList) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (pList == null) return list;
+        for (int i=0; i<pList.getParagraphCount(); i++) {
+            list.add(extractPara(hwp, pList.getParagraph(i), hwp.getDocInfo().getCharShapeList(), hwp.getDocInfo().getParaShapeList(), -1, -1));
+        }
+        return list;
     }
 
     private Map<String, Object> extractTable(HWPFile hwp, ControlTable table) {
@@ -675,12 +723,51 @@ public class HwpService {
         List<Map<String, Object>> controlsData = (List<Map<String, Object>>) d.get("controls");
         if (controlsData == null) return;
 
-        for (int i = 0; i < para.getControlList().size() && i < controlsData.size(); i++) {
-            kr.dogfoot.hwplib.object.bodytext.control.Control ctrl = para.getControlList().get(i);
-            Map<String, Object> cData = controlsData.get(i);
+        int ci = 0;
+        for (kr.dogfoot.hwplib.object.bodytext.control.Control ctrl : para.getControlList()) {
+            if (ci >= controlsData.size()) break;
+            Map<String, Object> cData = controlsData.get(ci);
+            
             if (ctrl instanceof ControlTable table && cData.get("table") instanceof Map tableData) {
                 applyTableUpdate(hwp, table, (Map<String, Object>) tableData);
+            } else if (ctrl instanceof ControlHeader header) {
+                applyParagraphListUpdate(hwp, header.getParagraphList(), cData);
+            } else if (ctrl instanceof ControlFooter footer) {
+                applyParagraphListUpdate(hwp, footer.getParagraphList(), cData);
+            } else if (ctrl instanceof ControlFootnote footnote) {
+                applyParagraphListUpdate(hwp, footnote.getParagraphList(), cData);
+            } else if (ctrl instanceof ControlEndnote endnote) {
+                applyParagraphListUpdate(hwp, endnote.getParagraphList(), cData);
+            } else if (ctrl instanceof ControlHiddenComment hidden) {
+                applyParagraphListUpdate(hwp, hidden.getParagraphList(), cData);
+            } else if (ctrl instanceof kr.dogfoot.hwplib.object.bodytext.control.gso.GsoControl gso) {
+                kr.dogfoot.hwplib.object.bodytext.paragraph.ParagraphList pList = null;
+                if (gso instanceof ControlRectangle rect && rect.getTextBox() != null) pList = rect.getTextBox().getParagraphList();
+                else if (gso instanceof ControlEllipse ellipse && ellipse.getTextBox() != null) pList = ellipse.getTextBox().getParagraphList();
+                else if (gso instanceof ControlArc arc && arc.getTextBox() != null) pList = arc.getTextBox().getParagraphList();
+                else if (gso instanceof ControlPolygon poly && poly.getTextBox() != null) pList = poly.getTextBox().getParagraphList();
+                else if (gso instanceof ControlCurve curve && curve.getTextBox() != null) pList = curve.getTextBox().getParagraphList();
+                
+                if (pList != null) {
+                    applyParagraphListUpdate(hwp, pList, cData);
+                }
             }
+            ci++;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyParagraphListUpdate(HWPFile hwp, kr.dogfoot.hwplib.object.bodytext.paragraph.ParagraphList pList, Map<String, Object> cData) {
+        if (pList == null) return;
+        List<Map<String, Object>> parasData = (List<Map<String, Object>>) cData.get("paragraphs");
+        if (parasData == null) return;
+        for (int i = 0; i < pList.getParagraphCount() && i < parasData.size(); i++) {
+            Paragraph cp = pList.getParagraph(i);
+            Map<String, Object> cpData = parasData.get(i);
+            try {
+                applyParaText(hwp, cp, cpData);
+                applyParaFormatting(hwp, cp, cpData, -1, -1);
+            } catch (Exception ignored) {}
         }
     }
 

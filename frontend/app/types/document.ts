@@ -252,6 +252,7 @@ export interface HwpControlInfo {
     height: number;
     base64?: string;
   };
+  paragraphs?: Paragraph[];
   extended?: Record<string, unknown>;
 }
 
